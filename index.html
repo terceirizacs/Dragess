@@ -224,6 +224,12 @@ nav{display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
 </div>
 
 <script>
+// =====================================================
+// COLE AQUI A URL DO SEU APPS SCRIPT
+// (Extensões > Apps Script > Implantar > Implantação como app da web)
+// =====================================================
+const API_URL = 'COLE_SUA_URL_AQUI';
+
 // ===== DATA LOADING =====
 let ALLDATA=[], NOW=Date.now();
 const TODAY=new Date();
@@ -267,7 +273,8 @@ function extractProduto(r){
 function processData(raw){
   return raw.map(r=>{
     const turma = extractTurma(r);
-    const funil = calcFunil(r);
+    // Usa o Funil da coluna AU (preenchido pelo Apps Script) ou calcula localmente
+    const funil = r.fu || calcFunil(r);
     return {
       ...r,
       turma: turma,
@@ -698,14 +705,33 @@ function initDashboard(){
   }
 }
 
-// Load external data file
-const script=document.createElement('script');
-script.src='data_gess.js';
-script.onload=()=>setTimeout(initDashboard,50);
-script.onerror=()=>{
-  document.getElementById('cSOS').innerHTML='<div style="color:var(--red);padding:40px;text-align:center;font-size:16px">Arquivo <strong>data_gess.js</strong> nao encontrado.<br><br>Coloque o arquivo na mesma pasta do dashboard.</div>';
-};
-document.head.appendChild(script);
+// Carregar dados da API do Apps Script
+(async function(){
+  const loading=document.getElementById('cSOS');
+  try {
+    if(!API_URL || API_URL==='COLE_SUA_URL_AQUI'){
+      // Fallback: tentar arquivo local
+      const script=document.createElement('script');
+      script.src='data_gess.js';
+      script.onload=()=>setTimeout(initDashboard,50);
+      script.onerror=()=>{
+        loading.innerHTML='<div style="color:var(--red);padding:40px;text-align:center;font-size:16px">Configure a URL do Apps Script no codigo do dashboard.<br><br>Abra o arquivo <strong>index.html</strong>, procure por <code>API_URL</code> e cole a URL da implantacao.</div>';
+      };
+      document.head.appendChild(script);
+      return;
+    }
+    loading.innerHTML='<div class="loading"><div class="spinner"></div><div style="color:var(--t2)">Buscando dados da planilha...</div></div>';
+    const resp=await fetch(API_URL);
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const data=await resp.json();
+    if(data.error) throw new Error(data.error);
+    RAW_DATA=data;
+    initDashboard();
+  } catch(err){
+    loading.innerHTML='<div style="color:var(--red);padding:40px;text-align:center;font-size:16px">Erro ao carregar dados:<br><br><code>'+err.message+'</code><br><br>Verifique a URL do Apps Script e as permissoes de acesso.</div>';
+  }
+})();
+var RAW_DATA=null;
 </script>
 </body>
 </html>
