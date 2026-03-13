@@ -274,7 +274,7 @@ function processData(raw){
   return raw.map(r=>{
     const turma = extractTurma(r);
     // Usa o Funil da coluna AU (preenchido pelo Apps Script) ou calcula localmente
-    const funil = r.fu || calcFunil(r);
+    const funil = normFunil(r.fu) || calcFunil(r);
     return {
       ...r,
       turma: turma,
@@ -373,6 +373,8 @@ function resetFilters(){
 
 // ===== CHART HELPERS =====
 const fOrd=['Nunca acessou','Acessou mas nao consumiu','Consumiu pouco','Desengajado','Engajado','Recompra','Verificar'];
+// Normaliza funil (remove acentos para compatibilidade)
+function normFunil(f){if(!f)return '';return f.normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 const fColors=['var(--pink)','var(--orange)','var(--gold)','var(--red)','var(--teal)','var(--green)','var(--t3)'];
 const fBg=['rgba(244,114,182,.12)','rgba(251,146,60,.12)','rgba(251,191,36,.12)','rgba(248,113,113,.12)','rgba(45,212,191,.12)','rgba(52,211,153,.12)','rgba(255,255,255,.06)'];
 const pOrd=['0','1-10','11-20','21-30','31-40','41-50','51-60','61-70','71-80','81-90','91-100'];
@@ -706,32 +708,32 @@ function initDashboard(){
 }
 
 // Carregar dados da API do Apps Script
+var RAW_DATA=null;
 (async function(){
   const loading=document.getElementById('cSOS');
   try {
     if(!API_URL || API_URL==='COLE_SUA_URL_AQUI'){
-      // Fallback: tentar arquivo local
       const script=document.createElement('script');
       script.src='data_gess.js';
       script.onload=()=>setTimeout(initDashboard,50);
-      script.onerror=()=>{
-        loading.innerHTML='<div style="color:var(--red);padding:40px;text-align:center;font-size:16px">Configure a URL do Apps Script no codigo do dashboard.<br><br>Abra o arquivo <strong>index.html</strong>, procure por <code>API_URL</code> e cole a URL da implantacao.</div>';
-      };
+      script.onerror=()=>{loading.innerHTML='<div style="color:var(--red);padding:40px;text-align:center">Configure a URL do Apps Script.</div>';};
       document.head.appendChild(script);
       return;
     }
-    loading.innerHTML='<div class="loading"><div class="spinner"></div><div style="color:var(--t2)">Buscando dados da planilha...</div></div>';
-    const resp=await fetch(API_URL);
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const data=await resp.json();
+    loading.innerHTML='<div class="loading"><div class="spinner"></div><div style="color:var(--t2)">Buscando dados da planilha...<br><small style="color:var(--t3)">(pode levar ate 60s na primeira vez)</small></div></div>';
+    const resp=await fetch(API_URL,{redirect:'follow'});
+    const text=await resp.text();
+    if(!text||text.length<3) throw new Error('Resposta vazia');
+    let data;
+    try{data=JSON.parse(text);}catch(pe){throw new Error('JSON invalido: '+text.substring(0,100));}
     if(data.error) throw new Error(data.error);
+    if(!Array.isArray(data)) throw new Error('Dados nao sao array');
     RAW_DATA=data;
     initDashboard();
   } catch(err){
-    loading.innerHTML='<div style="color:var(--red);padding:40px;text-align:center;font-size:16px">Erro ao carregar dados:<br><br><code>'+err.message+'</code><br><br>Verifique a URL do Apps Script e as permissoes de acesso.</div>';
+    loading.innerHTML='<div style="color:var(--red);padding:40px;text-align:center;font-size:16px">Erro ao carregar dados:<br><br><code>'+err.message+'</code><br><br>Verifique se o Apps Script esta implantado como app da web<br>com acesso "Qualquer pessoa".</div>';
   }
 })();
-var RAW_DATA=null;
 </script>
 </body>
 </html>
