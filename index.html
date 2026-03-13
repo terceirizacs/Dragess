@@ -32,7 +32,7 @@
 .login-box p{font-size:14px;color:var(--t2);margin-bottom:32px}
 .login-input{width:100%;padding:16px 20px;background:var(--bg);border:1px solid var(--border);border-radius:14px;color:var(--t1);font-family:'Inter';font-size:15px;outline:none;margin-bottom:14px}
 .login-input:focus{border-color:var(--accent)}
-.login-btn{width:100%;padding:16px;background:var(--accent);border:none;border-radius:14px;color:#fff;font-family:'Inter';font-weight:600;font-size:15px;cursor:pointer;transition:all .2s}
+.login-btn{width:100%;padding:16px;background:#111;border:none;border-radius:14px;color:#fff;font-family:'Inter';font-weight:600;font-size:15px;cursor:pointer;transition:all .2s}
 .login-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
 .login-error{color:var(--red);font-size:13px;margin-top:8px;display:none}
 .hdr-logo{width:48px;height:48px;border-radius:16px;object-fit:cover}
@@ -244,7 +244,6 @@ nav{display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
 <div class="filter-grid">
 <div class="filter-group"><label class="filter-label">Turma</label><div class="ms-wrap" id="fTurma"></div></div>
 <div class="filter-group"><label class="filter-label">Funil</label><div class="ms-wrap" id="fFunil"></div></div>
-<div class="filter-group"><label class="filter-label">Produto</label><div class="ms-wrap" id="fProduto"></div></div>
 <div class="filter-group"><label class="filter-label">Data de Compra</label><div class="filter-date-row"><input type="date" class="filter-date" id="fDe"><input type="date" class="filter-date" id="fAte"></div></div>
 </div>
 <div class="active-filters" id="tagsArea"><div class="filter-tag neutral">Nenhum filtro ativo</div></div>
@@ -253,13 +252,19 @@ nav{display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
 <div class="tab-content active" id="tab-sos"><div id="cSOS"><div class="loading"><div class="spinner"></div><div style="color:var(--t2)">Carregando dados...</div></div></div></div>
 <div class="tab-content" id="tab-protocolo"><div id="cProto"></div></div>
 <div class="tab-content" id="tab-detalhamento"><div id="cDet"></div></div>
-<div class="tab-content" id="tab-renovacoes"><div id="cRenov"></div></div>
+<div class="tab-content" id="tab-renovacoes"><div class="filter-bar" style="margin-bottom:20px">
+<div class="filter-header"><span class="filter-title">Filtros Renovacao</span><div class="filter-actions"><button class="filter-clear" onclick="resetRenovFilters()">Limpar</button><button class="filter-apply" onclick="applyFilters()">Aplicar</button></div></div>
+<div class="filter-grid">
+<div class="filter-group"><label class="filter-label">Vence em</label><div class="ms-wrap" id="fVence"></div></div>
+<div class="filter-group"><label class="filter-label">Status</label><div class="ms-wrap" id="fVencStatus"></div></div>
+</div>
+</div><div id="cRenov"></div></div>
 <div class="footer"><strong>Terceiriza CS</strong> - Dashboard Dra Gess</div>
 </div>
 
 <script>
 
-const PWD='Gess2025';
+const PWD='Dragess123';
 function togglePwd(){const i=document.getElementById('pwdInput');i.type=i.type==='password'?'text':'password';}
 function doLogin(){const v=document.getElementById('pwdInput').value;if(v===PWD){document.getElementById('loginScreen').style.display='none';document.getElementById('mainWrap').style.display='block';document.getElementById('loadingOverlay').style.display='flex';startLoadData();}else{document.getElementById('pwdError').style.display='block';}}
 function startLoadData(){loadFromAPI();}
@@ -289,9 +294,9 @@ function calcFunil(r){
   // Has some progress
   const diasDesdeLogin = ultLogin ? Math.floor((TODAY - new Date(ultLogin)) / 86400000) : 999999;
   if(totalProg <= 30 && diasDesdeLogin <= 30) return 'Consumiu pouco';
-  if(totalProg >= 70) return 'Recompra';
-  if(totalProg >= 31 && totalProg <= 69 && diasDesdeLogin <= 30) return 'Engajado';
-  if(totalProg > 0 && totalProg <= 69 && diasDesdeLogin > 30) return 'Desengajado';
+  if(totalProg >= 50) return 'Recompra';
+  if(totalProg >= 31 && totalProg <= 49 && diasDesdeLogin <= 30) return 'Engajado';
+  if(totalProg > 0 && totalProg <= 49 && diasDesdeLogin > 30) return 'Desengajado';
   return 'Verificar';
 }
 
@@ -321,7 +326,7 @@ function processData(raw){
       funil: funil,
       // SOS progress
       totalSOS: r.ts || 0,
-      mediaEssenciais: (r.me !== undefined && r.me !== null) ? r.me : 0,
+      mediaEssenciais: rd(((r.m1||0)+(r.m3||0)+(r.m4||0)+(r.m5||0))/4),
       mod1: r.m1||0, mod3: r.m3||0, mod4: r.m4||0, mod5: r.m5||0,
       // Protocolo
       cronograma: r.cr||0, faseAtaque: r.fa||0,
@@ -341,6 +346,7 @@ function processData(raw){
       // Renovação
       dtVencimento: r.dv||'',
       isRenovacao: !!r.rv,
+      turmaOriginal: r.to||'',
     };
   });
 }
@@ -379,16 +385,12 @@ function hbarTip(e,el){const l=el.dataset.hlbl,c=el.dataset.hcnt,p=el.dataset.hp
 
 // ===== FILTERS =====
 function getFiltered(){
-  const ft=getMS('fTurma'), ff=getMS('fFunil'), fp=getMS('fProduto');
+  const ft=getMS('fTurma'), ff=getMS('fFunil');
   const de=document.getElementById('fDe').value?new Date(document.getElementById('fDe').value).getTime():null;
   const ate=document.getElementById('fAte').value?new Date(document.getElementById('fAte').value+'T23:59:59').getTime():null;
   return ALLDATA.filter(r=>{
     if(ft.length && !ft.includes(r.turma)) return false;
     if(ff.length && !ff.includes(r.funil)) return false;
-    if(fp.length){
-      const p = r.turma === 'Aulao' ? 'Aulao' : 'SOS Mulher';
-      if(!fp.includes(p)) return false;
-    }
     if(de && r.dtCadastro){const d=new Date(r.dtCadastro).getTime();if(d<de)return false;}
     if(ate && r.dtCadastro){const d=new Date(r.dtCadastro).getTime();if(d>ate)return false;}
     return true;
@@ -399,13 +401,13 @@ function applyFilters(){
   const tags=[];
   getMS('fTurma').forEach(v=>tags.push(v));
   getMS('fFunil').forEach(v=>tags.push(v));
-  getMS('fProduto').forEach(v=>tags.push(v));
   if(document.getElementById('fDe').value)tags.push('De: '+document.getElementById('fDe').value);
   if(document.getElementById('fAte').value)tags.push('Ate: '+document.getElementById('fAte').value);
   const a=document.getElementById('tagsArea');
   a.innerHTML=tags.length?tags.map(t=>'<div class="filter-tag">'+t+'</div>').join('')+'<span class="results-badge">'+fN(rows.length)+' alunas</span>':'<div class="filter-tag neutral">Nenhum filtro ativo</div>';
   renderAll(rows);
 }
+function resetRenovFilters(){document.querySelectorAll('#fVence .ms-option.selected, #fVencStatus .ms-option.selected').forEach(o=>o.classList.remove('selected'));document.querySelectorAll('#fVence .ms-trigger, #fVencStatus .ms-trigger').forEach(t=>t.innerHTML='Todos');applyFilters();}
 function resetFilters(){
   document.querySelectorAll('.ms-option.selected').forEach(o=>o.classList.remove('selected'));
   document.querySelectorAll('.ms-trigger').forEach(t=>t.innerHTML='Todos');
@@ -521,7 +523,7 @@ function renderSOS(cs){
 
   // Comparativo por Turma
   h+='<div class="sec">Comparativo por Turma</div>';
-  const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','Renovacao','Sem turma'];
+  const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','Renovacao'];
   const compData=turmaOrder.map(t=>([t,turmaC[t]||0])).filter(([,v])=>v>0);
   if(compData.length){
     h+='<div class="card"><h3>Alunas por Turma</h3><div class="d">Distribuicao da base por turma</div><div class="hbar-area" style="height:auto">';
@@ -592,8 +594,8 @@ function renderProtocolo(cs){
   h+=kpi('linear-gradient(90deg,var(--accent),var(--a2))','Total Alunas',fN(total),'','var(--t1)');
   h+=kpi('linear-gradient(90deg,var(--teal),var(--green))','Media Protocolo',fP(avgProto),'total do produto','var(--teal)');
   h+=kpi('linear-gradient(90deg,var(--sky),var(--cyan))','Media das Fases',fP(mediaFases),'Cronograma+Ataque+Adaptacao+Choque','var(--sky)');
-  const comProgresso=cs.filter(r=>r.totalProtocolo>0).length;
-  h+=kpi('linear-gradient(90deg,var(--green),var(--teal))','Com Progresso',fN(comProgresso),fP(total?comProgresso/total*100:0)+' da base','var(--green)');
+  const nuncaProto=cs.filter(r=>r.totalProtocolo===0&&!r.ultLogin).length;
+  h+=kpi('linear-gradient(90deg,var(--red),var(--pink))','Nunca Acessaram',fN(nuncaProto),fP(total?nuncaProto/total*100:0)+' da base','var(--red)');
   h+='</div>';
 
   // Funil do Protocolo (mesmo estilo SOS)
@@ -670,6 +672,7 @@ function renderDetalhamento(cs){
     dtCadastro:r.dtCadastro,
     ultLogin:r.ultLogin,
     ultLoginStr:r.ultLogin?new Date(r.ultLogin).toLocaleDateString('pt-BR'):'-',
+    mesVenc:r.dtVencimento?new Date(r.dtVencimento).toLocaleDateString('pt-BR',{month:'short',year:'numeric'}):'-',
   }));
   _detPage=0;_detSearch='';
   drawDetTable();
@@ -697,12 +700,12 @@ function drawDetTable(fromSearch){
     {key:'nome',label:'ALUNA'},
     {key:'turma',label:'TURMA'},
     {key:'funil',label:'FUNIL'},
-    {key:'produto',label:'PRODUTO'},
     {key:'totalSOS',label:'PROGRESSO SOS'},
     {key:'mediaEss',label:'MEDIA ESSENCIAIS'},
     {key:'totalProto',label:'PROGRESSO PROTOCOLO'},
     {key:'dtCadastro',label:'DATA COMPRA'},
     {key:'ultLoginStr',label:'ULTIMO ACESSO'},
+    {key:'mesVenc',label:'VENCIMENTO'},
   ];
   colDefs.forEach(c=>{const icon=_detSort===c.key?(_detDir===1?' ↑':' ↓'):'';d+='<th onclick="detSort(\''+c.key+'\')">'+c.label+'<span class="sort-icon">'+icon+'</span></th>';});
   d+='</tr></thead><tbody>';
@@ -715,7 +718,6 @@ function drawDetTable(fromSearch){
     const fCol=fIdx>=0?fColors[fIdx]:'var(--t3)';
     const fBgC=fIdx>=0?fBg[fIdx]:'rgba(255,255,255,.06)';
     d+='<td><span style="padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;background:'+fBgC+';color:'+fCol+'">'+r.funil+'</span></td>';
-    d+='<td>'+r.produto+'</td>';
     // Progresso SOS bar
     const pCol1=r.totalSOS>70?'var(--green)':r.totalSOS>30?'var(--gold)':'var(--red)';
     d+='<td><div class="det-prog"><div class="det-prog-bar"><div class="det-prog-fill" style="width:'+Math.min(r.totalSOS,100)+'%;background:'+pCol1+'"></div></div><span style="font-family:JetBrains Mono;font-size:12px">'+r.totalSOS.toFixed(1)+'%</span></div></td>';
@@ -729,6 +731,7 @@ function drawDetTable(fromSearch){
     // Ultimo acesso
     const uCol=r.ultLogin?'var(--t2)':'var(--red)';
     d+='<td style="font-family:JetBrains Mono;font-size:12px;color:'+uCol+'">'+r.ultLoginStr+'</td>';
+    d+='<td style="font-family:JetBrains Mono;font-size:12px">'+r.mesVenc+'</td>';
     d+='</tr>';
   });
   d+='</tbody></table></div>';
@@ -750,16 +753,55 @@ function renderRenovacoes(cs){
   const total=cs.length;
   const hoje=new Date();hoje.setHours(0,0,0,0);
 
-  // Classificar por status de renovação
-  const buckets={vencido:[],ate30:[],ate60:[],ate90:[],mais90:[],semData:[]};
-  const renovados=cs.filter(r=>r.isRenovacao);
-  const turmaOrigem={};
-
+  // Classificar TODOS por vencimento (sem filtro, para KPIs)
+  const bucketsAll={vencido:[],ate30:[],ate60:[],ate90:[],mais90:[],semData:[]};
   cs.forEach(r=>{
-    if(!r.dtVencimento){buckets.semData.push(r);return;}
+    if(!r.dtVencimento){bucketsAll.semData.push(r);return;}
     const dv=new Date(r.dtVencimento);
     const dias=Math.floor((dv-hoje)/86400000);
     r._diasRenov=dias;
+    if(dias<0)bucketsAll.vencido.push(r);
+    else if(dias<=30)bucketsAll.ate30.push(r);
+    else if(dias<=60)bucketsAll.ate60.push(r);
+    else if(dias<=90)bucketsAll.ate90.push(r);
+    else bucketsAll.mais90.push(r);
+  });
+
+  // Aplicar filtros de renovação
+  const fv=getMS('fVence'), fs=getMS('fVencStatus');
+  let filtered=cs;
+  if(fv.length||fs.length){
+    filtered=cs.filter(r=>{
+      if(!r.dtVencimento) return false;
+      const dias=r._diasRenov;
+      if(dias===undefined) return false;
+      // Filtro Vence em
+      if(fv.length){
+        let matchV=false;
+        fv.forEach(v=>{
+          if(v==='30 dias' && dias>=0 && dias<=30) matchV=true;
+          if(v==='60 dias' && dias>=0 && dias<=60) matchV=true;
+          if(v==='90 dias' && dias>=0 && dias<=90) matchV=true;
+          if(v==='+120 dias' && dias>120) matchV=true;
+        });
+        if(!matchV && !(fs.length && fs.includes('Vencido') && dias<0)) return false;
+      }
+      // Filtro Status
+      if(fs.length){
+        let matchS=false;
+        if(fs.includes('Vencido') && dias<0) matchS=true;
+        if(fs.includes('A vencer') && dias>=0) matchS=true;
+        if(!matchS) return false;
+      }
+      return true;
+    });
+  }
+
+  // Classificar filtrados por status de renovação
+  const buckets={vencido:[],ate30:[],ate60:[],ate90:[],mais90:[],semData:[]};
+  filtered.forEach(r=>{
+    if(!r.dtVencimento){buckets.semData.push(r);return;}
+    const dias=r._diasRenov;
     if(dias<0)buckets.vencido.push(r);
     else if(dias<=30)buckets.ate30.push(r);
     else if(dias<=60)buckets.ate60.push(r);
@@ -767,19 +809,24 @@ function renderRenovacoes(cs){
     else buckets.mais90.push(r);
   });
 
+  const renovados=filtered.filter(r=>r.isRenovacao);
+  const turmaOrigem={};
+
   // Renovados por turma de origem
   renovados.forEach(r=>{
-    const t=r.turma||'Sem turma';
+    const t=r.turmaOriginal||r.turma||'Sem turma';
     turmaOrigem[t]=(turmaOrigem[t]||0)+1;
   });
   const totalRenov=renovados.length;
   const turmaOrigemArr=Object.entries(turmaOrigem).sort((a,b)=>b[1]-a[1]);
 
+  const totalFiltered=filtered.length;
+  const allRenov=cs.filter(r=>r.isRenovacao).length;
   let h='<div class="kpis">';
-  h+=kpi('linear-gradient(90deg,var(--green),var(--teal))','Ja Renovaram',fN(totalRenov),total?fP(rd(totalRenov/total*100))+' da base':'','var(--green)');
-  h+=kpi('linear-gradient(90deg,var(--red),var(--pink))','Vencidos',fN(buckets.vencido.length),'assinatura expirada','var(--red)');
-  h+=kpi('linear-gradient(90deg,var(--orange),var(--gold))','Vencem em 30 dias',fN(buckets.ate30.length),'acao urgente','var(--orange)');
-  h+=kpi('linear-gradient(90deg,var(--sky),var(--cyan))','Vencem 31-60 dias',fN(buckets.ate60.length),'planejar contato','var(--sky)');
+  h+=kpi('linear-gradient(90deg,var(--green),var(--teal))','Ja Renovaram',fN(allRenov),total?fP(rd(allRenov/total*100))+' da base':'','var(--green)');
+  h+=kpi('linear-gradient(90deg,var(--red),var(--pink))','Vencidos',fN(buckets.vencido.length),(fv.length||fs.length)?'filtrado':'assinatura expirada','var(--red)');
+  h+=kpi('linear-gradient(90deg,var(--orange),var(--gold))','Vencem em 30 dias',fN(buckets.ate30.length),(fv.length||fs.length)?'filtrado':'acao urgente','var(--orange)');
+  h+=kpi('linear-gradient(90deg,var(--sky),var(--cyan))','Vencem 31-60 dias',fN(buckets.ate60.length),(fv.length||fs.length)?'filtrado':'planejar contato','var(--sky)');
   h+='</div>';
 
   // Funil de vencimento
@@ -792,8 +839,10 @@ function renderRenovacoes(cs){
     ['Vence em +90 dias',buckets.mais90.length,'var(--green)','rgba(52,211,153,.12)'],
     ['Sem data',buckets.semData.length,'var(--t3)','rgba(255,255,255,.06)'],
   ];
-  h+='<div class="card"><h3>Distribuicao por Vencimento</h3><div class="d">Dias restantes para renovacao</div>';
-  faixas.forEach(([l,c,col,bg])=>{const pc=total?c/total*100:0;
+  const distLabel=(fv.length||fs.length)?fN(totalFiltered)+' resultados filtrados':'Dias restantes para renovacao';
+  h+='<div class="card"><h3>Distribuicao por Vencimento</h3><div class="d">'+distLabel+'</div>';
+  const distTotal=buckets.vencido.length+buckets.ate30.length+buckets.ate60.length+buckets.ate90.length+buckets.mais90.length+buckets.semData.length;
+  faixas.forEach(([l,c,col,bg])=>{const pc=distTotal?c/distTotal*100:0;
     h+='<div class="ft-row"><span class="ft-tag" style="background:'+bg+';color:'+col+'">'+l+'</span><span class="ft-qty">'+fN(c)+'</span><span class="ft-pct">'+fP(pc)+'</span><div class="ft-track"><div class="ft-fill" style="width:'+pc.toFixed(1)+'%;background:'+col+'"></div></div></div>';
   });
   h+='</div>';
@@ -812,7 +861,7 @@ function renderRenovacoes(cs){
   }
 
   // Tabela de urgentes (vencem em 30 dias)
-  const urgentes=[...buckets.vencido,...buckets.ate30].sort((a,b)=>(a._diasRenov||0)-(b._diasRenov||0)).slice(0,50);
+  const urgentes=[...buckets.vencido,...buckets.ate30].sort((a,b)=>(a._diasRenov||0)-(b._diasRenov||0));
   if(urgentes.length){
     h+='<div class="sec">Urgentes - Proximas a Vencer</div>';
     h+='<div style="overflow-x:auto"><table class="det-table"><thead><tr><th>ALUNA</th><th>TURMA</th><th>VENCIMENTO</th><th>DIAS</th><th>PROGRESSO SOS</th><th>FUNIL</th></tr></thead><tbody>';
@@ -848,19 +897,19 @@ function initDashboard(){
   if(typeof RAW_DATA !== 'undefined'){
     ALLDATA = processData(RAW_DATA);
     // Build filters
-    const tSet=new Set(),fSet=new Set(),pSet=new Set();
+    const tSet=new Set(),fSet=new Set();
     ALLDATA.forEach(r=>{
       if(r.turma)tSet.add(r.turma);
       if(r.funil)fSet.add(r.funil);
-      pSet.add(r.turma==='Aulao'?'Aulao':'SOS Mulher');
     });
-    const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','Renovacao','Sem turma'];
+    const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','Renovacao'];
     const sortedT=turmaOrder.filter(t=>tSet.has(t));
     tSet.forEach(t=>{if(!sortedT.includes(t))sortedT.push(t);});
     buildMS('fTurma',sortedT);
     buildMS('fFunil',fOrd.filter(f=>fSet.has(f)));
-    buildMS('fProduto',[...pSet].sort());
-    // Set date badge
+    buildMS('fVence',['30 dias','60 dias','90 dias','+120 dias']);
+    buildMS('fVencStatus',['Vencido','A vencer']);
+        // Set date badge
     document.getElementById('dateBadge').textContent=new Date().toLocaleDateString('pt-BR')+' '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('dateBadge').style.display='block';
     renderAll(ALLDATA);
@@ -882,7 +931,7 @@ async function loadFromAPI(){
       document.head.appendChild(script);
       return;
     }
-    loading.innerHTML='<div class="loading"><div class="spinner"></div><div style="color:var(--t2)">Buscando dados da planilha...<br><small style="color:var(--t3)">(pode levar ate 60s na primeira vez)</small></div></div>';
+    loading.innerHTML='<div class="loading"><div class="spinner"></div><div style="color:var(--t2)">Buscando dados da planilha...</div></div>';
     const resp=await fetch(API_URL,{redirect:'follow'});
     const text=await resp.text();
     if(!text||text.length<3) throw new Error('Resposta vazia');
