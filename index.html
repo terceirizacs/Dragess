@@ -865,7 +865,7 @@ function renderRenovacoes(cs){
   if(urgentes.length){
     h+='<div class="sec">Urgentes - Proximas a Vencer ('+fN(urgentes.length)+')</div>';
     h+='<div id="urgTable"></div>';
-    h+='<div id="urgPag" class="det-pag"></div>';
+    h+='<div id="urgPag" class="det-pager"></div>';
   }
 
   // Insights
@@ -881,6 +881,7 @@ function renderRenovacoes(cs){
 
 // Paginação urgentes
 let _urgData=[],_urgPage=0;const _urgPP=20;
+function urgPage(p){_urgPage=p;renderUrgPage();}
 function renderUrgPage(){
   const start=_urgPage*_urgPP,end=Math.min(start+_urgPP,_urgData.length);
   const page=_urgData.slice(start,end);
@@ -900,14 +901,14 @@ function renderUrgPage(){
   });
   t+='</tbody></table></div>';
   const el=document.getElementById('urgTable');if(el)el.innerHTML=t;
-  // Paginação
+  // Paginação (mesmo estilo do Detalhamento)
   const totalPag=Math.ceil(_urgData.length/_urgPP);
-  let p='<span class="det-info">'+fN(start+1)+'-'+fN(end)+' de '+fN(_urgData.length)+'</span><div class="det-nav">';
-  p+='<button class="det-nav-btn" onclick="_urgPage=0;renderUrgPage()" '+(start===0?'disabled':'')+'>&#171;</button>';
-  p+='<button class="det-nav-btn" onclick="_urgPage--;renderUrgPage()" '+(start===0?'disabled':'')+'>&#8249;</button>';
-  p+='<span class="det-page">'+(_urgPage+1)+' / '+totalPag+'</span>';
-  p+='<button class="det-nav-btn" onclick="_urgPage++;renderUrgPage()" '+(end>=_urgData.length?'disabled':'')+'>&#8250;</button>';
-  p+='<button class="det-nav-btn" onclick="_urgPage='+Math.max(totalPag-1,0)+';renderUrgPage()" '+(end>=_urgData.length?'disabled':'')+'>&#187;</button>';
+  let p='<div style="text-align:center;color:var(--t3);font-size:12px;margin-bottom:6px">'+fN(start+1)+'-'+fN(end)+' de '+fN(_urgData.length)+'</div>';
+  p+='<div class="det-pager">';
+  if(_urgPage>0)p+='<button onclick="urgPage(0)">&#171;</button><button onclick="urgPage('+(_urgPage-1)+')">&#8249;</button>';
+  const sp=Math.max(0,_urgPage-3),ep=Math.min(totalPag,_urgPage+4);
+  for(let i=sp;i<ep;i++){p+='<button class="'+(i===_urgPage?'active':'')+'" onclick="urgPage('+i+')">'+(i+1)+'</button>';}
+  if(_urgPage<totalPag-1)p+='<button onclick="urgPage('+(_urgPage+1)+')">&#8250;</button><button onclick="urgPage('+(totalPag-1)+')">&#187;</button>';
   p+='</div>';
   const pg=document.getElementById('urgPag');if(pg)pg.innerHTML=p;
 }
