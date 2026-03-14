@@ -315,38 +315,41 @@ function extractProduto(r){
   return 'SOS Mulher'; // All have both SOS and Protocolo data
 }
 
+// Indices do array vindo do Apps Script v5
+const R={NOME:0,EMAIL:1,TURMA:2,FUNIL:3,DT_CAD:4,ULT_LOGIN:5,ACESSOS:6,DIAS_SEM:7,M1:8,M3:9,M4:10,M5:11,TOTAL_SOS:12,MEDIA_ESS:13,CRONO:14,F_ATAQUE:15,F_ADAPT:16,F_CHOQUE:17,TOTAL_PROTO:18,DT_VENC:19,IS_RENOV:20,TURMA_ORIG:21,STATUS:22};
+
 function processData(raw){
+  // Suporta array de arrays (v5) e array de objetos (v4)
   return raw.map(r=>{
-    const turma = extractTurma(r);
-    // Usa o Funil da coluna AU (preenchido pelo Apps Script) ou calcula localmente
-    const funil = normFunil(r.fu) || calcFunil(r);
+    if(Array.isArray(r)){
+      const m1=r[R.M1]||0,m3=r[R.M3]||0,m4=r[R.M4]||0,m5=r[R.M5]||0;
+      const cr=r[R.CRONO]||0,fa=r[R.F_ATAQUE]||0,fd=r[R.F_ADAPT]||0,fc=r[R.F_CHOQUE]||0;
+      return {
+        nome:r[R.NOME],email:r[R.EMAIL],turma:r[R.TURMA],
+        funil:normFunil(r[R.FUNIL]),status:r[R.STATUS]||'',
+        dtCadastro:r[R.DT_CAD]||'',ultLogin:r[R.ULT_LOGIN]||'',
+        acessos:r[R.ACESSOS]||0,diasSemAcesso:r[R.DIAS_SEM]||0,
+        mod1:m1,mod3:m3,mod4:m4,mod5:m5,
+        totalSOS:r[R.TOTAL_SOS]||0,
+        mediaEssenciais:rd((m1+m3+m4+m5)/4),
+        cronograma:cr,faseAtaque:fa,faseAdaptacao:fd,faseChoque:fc,
+        totalProtocolo:r[R.TOTAL_PROTO]||0,
+        mediaProtocolo:rd((cr+fa+fd+fc)/4),
+        dtVencimento:r[R.DT_VENC]||'',
+        isRenovacao:!!r[R.IS_RENOV],
+        turmaOriginal:r[R.TURMA_ORIG]||''
+      };
+    }
+    // Fallback formato objeto (v4)
+    const funil=normFunil(r.fu)||calcFunil(r);
     return {
-      ...r,
-      turma: turma,
-      funil: funil,
-      // SOS progress
-      totalSOS: r.ts || 0,
-      mediaEssenciais: rd(((r.m1||0)+(r.m3||0)+(r.m4||0)+(r.m5||0))/4),
-      mod1: r.m1||0, mod3: r.m3||0, mod4: r.m4||0, mod5: r.m5||0,
-      // Protocolo
-      cronograma: r.cr||0, faseAtaque: r.fa||0,
-      faseAdaptacao: r.fd||0, faseChoque: r.fc||0,
-      totalProtocolo: r.tp||0,
-      // Computed protocolo average
-      mediaProtocolo: rd(((r.cr||0)+(r.fa||0)+(r.fd||0)+(r.fc||0))/4),
-      // Meta
-      nome: r.n,
-      email: r.e,
-      status: r.s,
-      dtCadastro: r.dc||'',
-      ultLogin: r.ul||'',
-      diasSemAcesso: r.ds||-1,
-      acessos: r.ac||0,
-      aulasAssistidas: r.aa||0,
-      // Renovação
-      dtVencimento: r.dv||'',
-      isRenovacao: !!r.rv,
-      turmaOriginal: r.to||'',
+      nome:r.n,email:r.e,turma:r.t||extractTurma(r),funil:funil,status:r.s||'',
+      dtCadastro:r.dc||'',ultLogin:r.ul||'',acessos:r.ac||0,diasSemAcesso:r.ds||0,
+      mod1:r.m1||0,mod3:r.m3||0,mod4:r.m4||0,mod5:r.m5||0,
+      totalSOS:r.ts||0,mediaEssenciais:rd(((r.m1||0)+(r.m3||0)+(r.m4||0)+(r.m5||0))/4),
+      cronograma:r.cr||0,faseAtaque:r.fa||0,faseAdaptacao:r.fd||0,faseChoque:r.fc||0,
+      totalProtocolo:r.tp||0,mediaProtocolo:rd(((r.cr||0)+(r.fa||0)+(r.fd||0)+(r.fc||0))/4),
+      dtVencimento:r.dv||'',isRenovacao:!!r.rv,turmaOriginal:r.to||''
     };
   });
 }
@@ -811,15 +814,7 @@ function renderRenovacoes(cs){
   });
 
   const renovados=filtered.filter(r=>r.isRenovacao);
-  const turmaOrigem={};
-
-  // Renovados por turma de origem
-  renovados.forEach(r=>{
-    const t=r.turmaOriginal||r.turma||'Sem turma';
-    turmaOrigem[t]=(turmaOrigem[t]||0)+1;
-  });
   const totalRenov=renovados.length;
-  const turmaOrigemArr=Object.entries(turmaOrigem).sort((a,b)=>b[1]-a[1]);
 
   const totalFiltered=filtered.length;
   const allRenov=cs.filter(r=>r.isRenovacao).length;
@@ -848,17 +843,18 @@ function renderRenovacoes(cs){
   });
   h+='</div>';
 
-  // Renovados por turma de origem
-  if(turmaOrigemArr.length){
-    h+='<div class="sec">Renovacoes por Turma de Origem</div>';
-    h+='<div class="card"><h3>De qual turma vieram as renovacoes?</h3><div class="d">'+fN(totalRenov)+' renovacoes identificadas</div><div class="hbar-area" style="height:auto">';
-    const mx=Math.max(...turmaOrigemArr.map(([,v])=>v),1);
-    turmaOrigemArr.forEach(([t,c])=>{
-      const w=Math.max(Math.round(c/mx*100),3);
-      const pct=totalRenov?fP(rd(c/totalRenov*100)):'';
-      h+='<div class="hbar-row"><span class="hbar-lbl" style="min-width:100px">'+t+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+w+'%;background:var(--teal)">'+fN(c)+' ('+pct+')</div></div></div>';
-    });
-    h+='</div></div>';
+  // Medias de progresso das renovadas
+  if(renovados.length){
+    const rSOS=renovados.map(r=>r.totalSOS),rME=renovados.map(r=>r.mediaEssenciais);
+    const rTP=renovados.map(r=>r.totalProtocolo),rMP=renovados.map(r=>r.mediaProtocolo||0);
+    const avgSOS=rd(avg(rSOS)),avgME=rd(avg(rME)),avgTP=rd(avg(rTP)),avgMP=rd(avg(rMP));
+    h+='<div class="sec">Perfil das Alunas que Renovaram</div>';
+    h+='<div class="kpis">';
+    h+=kpi('linear-gradient(90deg,var(--teal),var(--green))','Media SOS',fP(avgSOS),'progresso total SOS','var(--teal)');
+    h+=kpi('linear-gradient(90deg,var(--sky),var(--cyan))','Media Essenciais',fP(avgME),'modulos 1+3+4+5','var(--sky)');
+    h+=kpi('linear-gradient(90deg,var(--accent),var(--a2))','Media Protocolo',fP(avgTP),'progresso total protocolo','var(--accent)');
+    h+=kpi('linear-gradient(90deg,var(--gold),var(--orange))','Media Fases',fP(avgMP),'cronograma+ataque+adapt+choque','var(--gold)');
+    h+='</div>';
   }
 
   // Vencidas por turma
@@ -877,25 +873,13 @@ function renderRenovacoes(cs){
     h+='</div></div>';
   }
 
-  // Tabela de urgentes (vencem em 30 dias)
+  // Tabela de urgentes com paginação
   const urgentes=[...buckets.vencido,...buckets.ate30].sort((a,b)=>(a._diasRenov||0)-(b._diasRenov||0));
+  _urgData=urgentes;_urgPage=0;
   if(urgentes.length){
-    h+='<div class="sec">Urgentes - Proximas a Vencer</div>';
-    h+='<div style="overflow-x:auto"><table class="det-table"><thead><tr><th>ALUNA</th><th>TURMA</th><th>VENCIMENTO</th><th>DIAS</th><th>PROGRESSO SOS</th><th>FUNIL</th></tr></thead><tbody>';
-    urgentes.forEach(r=>{
-      const dias=r._diasRenov||0;
-      const dCol=dias<0?'var(--red)':dias<=7?'var(--orange)':'var(--gold)';
-      const diasTxt=dias<0?dias+' (vencido)':dias+' dias';
-      const fIdx=fOrd.indexOf(r.funil);const fCol=fIdx>=0?fColors[fIdx]:'var(--t3)';const fBgC=fIdx>=0?fBg[fIdx]:'rgba(255,255,255,.06)';
-      h+='<tr><td style="font-weight:600;color:var(--t1)">'+r.nome+'</td><td>'+r.turma+'</td>';
-      h+='<td style="font-family:JetBrains Mono;font-size:12px">'+(r.dtVencimento?new Date(r.dtVencimento).toLocaleDateString('pt-BR'):'-')+'</td>';
-      h+='<td style="font-family:JetBrains Mono;font-size:12px;font-weight:700;color:'+dCol+'">'+diasTxt+'</td>';
-      const pCol=r.totalSOS>70?'var(--green)':r.totalSOS>30?'var(--gold)':'var(--red)';
-      h+='<td><div class="det-prog"><div class="det-prog-bar"><div class="det-prog-fill" style="width:'+Math.min(r.totalSOS,100)+'%;background:'+pCol+'"></div></div><span style="font-family:JetBrains Mono;font-size:12px">'+r.totalSOS.toFixed(1)+'%</span></div></td>';
-      h+='<td><span style="padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;background:'+fBgC+';color:'+fCol+'">'+r.funil+'</span></td>';
-      h+='</tr>';
-    });
-    h+='</tbody></table></div>';
+    h+='<div class="sec">Urgentes - Proximas a Vencer ('+fN(urgentes.length)+')</div>';
+    h+='<div id="urgTable"></div>';
+    h+='<div id="urgPag" class="det-pag"></div>';
   }
 
   // Insights
@@ -906,6 +890,40 @@ function renderRenovacoes(cs){
   h+='</div>';
 
   document.getElementById('cRenov').innerHTML=h;
+  if(_urgData.length) renderUrgPage();
+}
+
+// Paginação urgentes
+let _urgData=[],_urgPage=0;const _urgPP=20;
+function renderUrgPage(){
+  const start=_urgPage*_urgPP,end=Math.min(start+_urgPP,_urgData.length);
+  const page=_urgData.slice(start,end);
+  let t='<div style="overflow-x:auto"><table class="det-table"><thead><tr><th>ALUNA</th><th>TURMA</th><th>VENCIMENTO</th><th>DIAS</th><th>PROGRESSO SOS</th><th>FUNIL</th></tr></thead><tbody>';
+  page.forEach(r=>{
+    const dias=r._diasRenov||0;
+    const dCol=dias<0?'var(--red)':dias<=7?'var(--orange)':'var(--gold)';
+    const diasTxt=dias<0?dias+' (vencido)':dias+' dias';
+    const fIdx=fOrd.indexOf(r.funil);const fCol=fIdx>=0?fColors[fIdx]:'var(--t3)';const fBgC=fIdx>=0?fBg[fIdx]:'rgba(255,255,255,.06)';
+    t+='<tr><td style="font-weight:600;color:var(--t1)">'+r.nome+'</td><td>'+r.turma+'</td>';
+    t+='<td style="font-family:JetBrains Mono;font-size:12px">'+(r.dtVencimento?new Date(r.dtVencimento).toLocaleDateString('pt-BR'):'-')+'</td>';
+    t+='<td style="font-family:JetBrains Mono;font-size:12px;font-weight:700;color:'+dCol+'">'+diasTxt+'</td>';
+    const pCol=r.totalSOS>70?'var(--green)':r.totalSOS>30?'var(--gold)':'var(--red)';
+    t+='<td><div class="det-prog"><div class="det-prog-bar"><div class="det-prog-fill" style="width:'+Math.min(r.totalSOS,100)+'%;background:'+pCol+'"></div></div><span style="font-family:JetBrains Mono;font-size:12px">'+r.totalSOS.toFixed(1)+'%</span></div></td>';
+    t+='<td><span style="padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;background:'+fBgC+';color:'+fCol+'">'+r.funil+'</span></td>';
+    t+='</tr>';
+  });
+  t+='</tbody></table></div>';
+  const el=document.getElementById('urgTable');if(el)el.innerHTML=t;
+  // Paginação
+  const totalPag=Math.ceil(_urgData.length/_urgPP);
+  let p='<span class="det-info">'+fN(start+1)+'-'+fN(end)+' de '+fN(_urgData.length)+'</span><div class="det-nav">';
+  p+='<button class="det-nav-btn" onclick="_urgPage=0;renderUrgPage()" '+(start===0?'disabled':'')+'>&#171;</button>';
+  p+='<button class="det-nav-btn" onclick="_urgPage--;renderUrgPage()" '+(start===0?'disabled':'')+'>&#8249;</button>';
+  p+='<span class="det-page">'+(_urgPage+1)+' / '+totalPag+'</span>';
+  p+='<button class="det-nav-btn" onclick="_urgPage++;renderUrgPage()" '+(end>=_urgData.length?'disabled':'')+'>&#8250;</button>';
+  p+='<button class="det-nav-btn" onclick="_urgPage='+Math.max(totalPag-1,0)+';renderUrgPage()" '+(end>=_urgData.length?'disabled':'')+'>&#187;</button>';
+  p+='</div>';
+  const pg=document.getElementById('urgPag');if(pg)pg.innerHTML=p;
 }
 
 // ===== INIT =====
@@ -955,8 +973,9 @@ async function loadFromAPI(){
     let data;
     try{data=JSON.parse(text);}catch(pe){throw new Error('JSON invalido: '+text.substring(0,100));}
     if(data.error) throw new Error(data.error);
-    if(!Array.isArray(data)) throw new Error('Dados nao sao array');
-    RAW_DATA=data;
+    // Suporta formato v5 {rows:[...]} e v4 [...]
+    RAW_DATA=data.rows||data;
+    if(!Array.isArray(RAW_DATA)) throw new Error('Dados nao sao array');
     document.getElementById('loadingOverlay').style.display='none';
     initDashboard();
   } catch(err){
