@@ -59,6 +59,7 @@ nav{display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
 .tab-btn{padding:10px 18px;border-radius:14px;border:1px solid var(--border);background:var(--card);color:var(--t2);font-size:13px;font-weight:600;cursor:pointer;transition:all .3s;white-space:nowrap;flex-shrink:0}
 .tab-btn:hover{border-color:var(--bh);color:var(--t1)}
 .tab-btn.active{background:var(--accent);color:var(--bg);border-color:transparent}
+@media(max-width:767px){nav{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-top:1px solid var(--border);padding:8px 12px;margin:0;gap:6px;justify-content:space-around;overflow-x:auto;-webkit-overflow-scrolling:touch}.tab-btn{padding:8px 12px;font-size:11px;border-radius:10px;flex:1;text-align:center;min-width:0}.wrap{padding-bottom:80px}}
 .tab-content{display:none}.tab-content.active{display:block}
 .filter-bar{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:28px}
 .filter-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
@@ -244,6 +245,7 @@ nav{display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
 <div class="filter-grid">
 <div class="filter-group"><label class="filter-label">Turma</label><div class="ms-wrap" id="fTurma"></div></div>
 <div class="filter-group"><label class="filter-label">Funil</label><div class="ms-wrap" id="fFunil"></div></div>
+<div class="filter-group"><label class="filter-label">Status</label><div class="ms-wrap" id="fStatus"></div></div>
 <div class="filter-group"><label class="filter-label">Data de Compra</label><div class="filter-date-row"><input type="date" class="filter-date" id="fDe"><input type="date" class="filter-date" id="fAte"></div></div>
 </div>
 <div class="active-filters" id="tagsArea"><div class="filter-tag neutral">Nenhum filtro ativo</div></div>
@@ -374,12 +376,13 @@ function hbarTip(e,el){const l=el.dataset.hlbl,c=el.dataset.hcnt,p=el.dataset.hp
 
 // ===== FILTERS =====
 function getFiltered(){
-  const ft=getMS('fTurma'), ff=getMS('fFunil');
+  const ft=getMS('fTurma'), ff=getMS('fFunil'), fs=getMS('fStatus');
   const de=document.getElementById('fDe').value?new Date(document.getElementById('fDe').value).getTime():null;
   const ate=document.getElementById('fAte').value?new Date(document.getElementById('fAte').value+'T23:59:59').getTime():null;
   return ALLDATA.filter(r=>{
     if(ft.length && !ft.includes(r.turma)) return false;
     if(ff.length && !ff.includes(r.funil)) return false;
+    if(fs.length && !fs.includes(r.status)) return false;
     if(de && r.dtCadastro){const d=new Date(r.dtCadastro).getTime();if(d<de)return false;}
     if(ate && r.dtCadastro){const d=new Date(r.dtCadastro).getTime();if(d>ate)return false;}
     return true;
@@ -390,6 +393,7 @@ function applyFilters(){
   const tags=[];
   getMS('fTurma').forEach(v=>tags.push(v));
   getMS('fFunil').forEach(v=>tags.push(v));
+  getMS('fStatus').forEach(v=>tags.push(v));
   if(document.getElementById('fDe').value)tags.push('De: '+document.getElementById('fDe').value);
   if(document.getElementById('fAte').value)tags.push('Ate: '+document.getElementById('fAte').value);
   const a=document.getElementById('tagsArea');
@@ -859,11 +863,11 @@ function renderRenovacoes(cs){
     h+='</div></div>';
   }
 
-  // Tabela de urgentes com paginação
-  const urgentes=[...buckets.vencido,...buckets.ate30].sort((a,b)=>(a._diasRenov||0)-(b._diasRenov||0));
-  _urgData=urgentes;_urgPage=0;
-  if(urgentes.length){
-    h+='<div class="sec">Urgentes - Proximas a Vencer ('+fN(urgentes.length)+')</div>';
+  // Tabela de todas as alunas filtradas (com data de vencimento)
+  const todasComVenc=filtered.filter(r=>r.dtVencimento).sort((a,b)=>(a._diasRenov||0)-(b._diasRenov||0));
+  _urgData=todasComVenc;_urgPage=0;
+  if(todasComVenc.length){
+    h+='<div class="sec">Alunas - Vencimento ('+fN(todasComVenc.length)+')</div>';
     h+='<div id="urgTable"></div>';
     h+='<div id="urgPag" class="det-pager"></div>';
   }
@@ -919,16 +923,18 @@ function initDashboard(){
   if(typeof RAW_DATA !== 'undefined'){
     ALLDATA = processData(RAW_DATA);
     // Build filters
-    const tSet=new Set(),fSet=new Set();
+    const tSet=new Set(),fSet=new Set(),sSet=new Set();
     ALLDATA.forEach(r=>{
       if(r.turma)tSet.add(r.turma);
       if(r.funil)fSet.add(r.funil);
+      if(r.status)sSet.add(r.status);
     });
     const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','Renovacao'];
     const sortedT=turmaOrder.filter(t=>tSet.has(t));
     tSet.forEach(t=>{if(!sortedT.includes(t))sortedT.push(t);});
     buildMS('fTurma',sortedT);
     buildMS('fFunil',fOrd.filter(f=>fSet.has(f)));
+    buildMS('fStatus',[...sSet].sort());
     buildMS('fVence',['30 dias','60 dias','90 dias','+120 dias']);
     buildMS('fVencStatus',['Vencido','A vencer']);
         // Set date badge
