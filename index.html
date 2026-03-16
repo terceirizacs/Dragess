@@ -304,7 +304,7 @@ function extractProduto(r){
 }
 
 // Indices do array vindo do Apps Script v5
-const R={NOME:0,EMAIL:1,TURMA:2,FUNIL:3,DT_CAD:4,ULT_LOGIN:5,ACESSOS:6,DIAS_SEM:7,M1:8,M3:9,M4:10,M5:11,TOTAL_SOS:12,MEDIA_ESS:13,CRONO:14,F_ATAQUE:15,F_ADAPT:16,F_CHOQUE:17,TOTAL_PROTO:18,DT_VENC:19,IS_RENOV:20,TURMA_ORIG:21,STATUS:22};
+const R={NOME:0,EMAIL:1,TURMA:2,FUNIL:3,DT_CAD:4,ULT_LOGIN:5,ACESSOS:6,DIAS_SEM:7,M1:8,M3:9,M4:10,M5:11,TOTAL_SOS:12,MEDIA_ESS:13,CRONO:14,F_ATAQUE:15,F_ADAPT:16,F_CHOQUE:17,TOTAL_PROTO:18,DT_VENC:19,IS_RENOV:20,TURMA_ORIG:21,STATUS:22,MOTIVO:23};
 
 function processData(raw){
   // Suporta array de arrays (v5) e array de objetos (v4)
@@ -325,7 +325,8 @@ function processData(raw){
         mediaProtocolo:rd((cr+fa+fd+fc)/4),
         dtVencimento:r[R.DT_VENC]||'',
         isRenovacao:!!r[R.IS_RENOV],
-        turmaOriginal:r[R.TURMA_ORIG]||''
+        turmaOriginal:r[R.TURMA_ORIG]||'',
+        motivoNaoRenov:r[R.MOTIVO]||''
       };
     }
     // Fallback formato objeto (v4)
@@ -337,7 +338,7 @@ function processData(raw){
       totalSOS:r.ts||0,mediaEssenciais:rd(((r.m1||0)+(r.m3||0)+(r.m4||0)+(r.m5||0))/4),
       cronograma:r.cr||0,faseAtaque:r.fa||0,faseAdaptacao:r.fd||0,faseChoque:r.fc||0,
       totalProtocolo:r.tp||0,mediaProtocolo:rd(((r.cr||0)+(r.fa||0)+(r.fd||0)+(r.fc||0))/4),
-      dtVencimento:r.dv||'',isRenovacao:!!r.rv,turmaOriginal:r.to||''
+      dtVencimento:r.dv||'',isRenovacao:!!r.rv,turmaOriginal:r.to||'',motivoNaoRenov:r.mo||''
     };
   });
 }
@@ -865,6 +866,46 @@ function renderRenovacoes(cs){
       h+='<div class="hbar-row"><span class="hbar-lbl" style="min-width:100px">'+t+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+w+'%;background:var(--red)">'+fN(c)+' ('+pct+')</div></div></div>';
     });
     h+='</div></div>';
+  }
+
+  // Motivos de nao renovacao
+  const motivoCount={},motivoTurma={};
+  filtered.forEach(r=>{
+    if(!r.motivoNaoRenov) return;
+    const m=r.motivoNaoRenov;
+    motivoCount[m]=(motivoCount[m]||0)+1;
+    const t=r.turma||'Outros';
+    if(!motivoTurma[m]) motivoTurma[m]={};
+    motivoTurma[m][t]=(motivoTurma[m][t]||0)+1;
+  });
+  const motivoArr=Object.entries(motivoCount).sort((a,b)=>b[1]-a[1]);
+  const totalMotivos=motivoArr.reduce((s,[,c])=>s+c,0);
+  if(motivoArr.length){
+    const mColors=['var(--red)','var(--orange)','var(--gold)','var(--pink)','var(--sky)','var(--teal)','var(--green)','var(--accent)'];
+    const mBg=['rgba(248,113,113,.12)','rgba(251,146,60,.12)','rgba(251,191,36,.12)','rgba(244,114,182,.12)','rgba(56,189,248,.12)','rgba(45,212,191,.12)','rgba(52,211,153,.12)','rgba(139,124,247,.12)'];
+    h+='<div class="sec">Motivos de Nao Renovacao</div>';
+    h+='<div class="card"><h3>Por que as alunas nao renovaram?</h3><div class="d">'+fN(totalMotivos)+' respostas coletadas</div>';
+    motivoArr.forEach(([m,c],i)=>{
+      const pc=totalMotivos?c/totalMotivos*100:0;
+      const col=mColors[i%mColors.length];
+      const bg=mBg[i%mBg.length];
+      h+='<div class="ft-row"><span class="ft-tag" style="background:'+bg+';color:'+col+';min-width:280px">'+m+'</span><span class="ft-qty">'+fN(c)+'</span><span class="ft-pct">'+fP(pc)+'</span><div class="ft-track"><div class="ft-fill" style="width:'+pc.toFixed(1)+'%;background:'+col+'"></div></div></div>';
+    });
+    h+='</div>';
+    // Detalhamento motivo por turma
+    h+='<div class="card" style="margin-top:16px"><h3>Motivos por Turma</h3><div class="d">Qual turma tem mais cada motivo</div>';
+    motivoArr.forEach(([m,c],i)=>{
+      const turmas=Object.entries(motivoTurma[m]).sort((a,b)=>b[1]-a[1]);
+      const col=mColors[i%mColors.length];
+      h+='<div style="margin:16px 0 8px;font-weight:700;color:'+col+';font-size:13px">'+m+' ('+fN(c)+')</div>';
+      const mx=Math.max(...turmas.map(([,v])=>v),1);
+      turmas.forEach(([t,tc])=>{
+        const w=Math.max(Math.round(tc/mx*100),5);
+        const pct=c?fP(rd(tc/c*100)):'';
+        h+='<div class="hbar-row"><span class="hbar-lbl" style="min-width:80px;font-size:12px">'+t+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+w+'%;background:'+col+'">'+fN(tc)+' ('+pct+')</div></div></div>';
+      });
+    });
+    h+='</div>';
   }
 
   // Tabela de todas as alunas filtradas (com data de vencimento)
