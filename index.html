@@ -295,6 +295,8 @@ function extractTurma(r){
   const m = a.match(/TURMA\s*(\d+)/);
   if(m) return 'SOS '+m[1];
   if(a.includes('RENOVACAO') || a.includes('RENOVAÇÃO')) return 'Renovacao';
+  // SOS MULHER sem numero de turma = turma propria
+  if(a.includes('SOS MULHER')) return 'SOS Mulher';
   return 'Sem turma';
 }
 
@@ -521,7 +523,7 @@ function renderSOS(cs){
 
   // Comparativo por Turma
   h+='<div class="sec">Comparativo por Turma</div>';
-  const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','Renovacao'];
+  const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','SOS Mulher','Renovacao'];
   const compData=turmaOrder.map(t=>([t,turmaC[t]||0])).filter(([,v])=>v>0);
   if(compData.length){
     h+='<div class="card"><h3>Alunas por Turma</h3><div class="d">Distribuicao da base por turma</div><div class="hbar-area" style="height:auto">';
@@ -852,6 +854,30 @@ function renderRenovacoes(cs){
     h+='</div>';
   }
 
+  // Percentual de Renovação por Turma (dados da aba "Dado entrega renovação")
+  const renovTurmaData=[
+    ['SOS 14',43,455,9.5],['SOS 15',67,626,10.7],['SOS 16',65,827,7.9],
+    ['SOS 17',1,940,0.1],['SOS 18',3,828,0.4],['SOS 19',3,709,0.4],
+    ['SOS 20',51,683,7.5],['SOS 21',2,268,0.7],['SOS 22',2,322,0.6],
+    ['SOS 23',1,221,0.5],['SOS 24',2,293,0.7],['SOS Mulher',224,4598,4.9]
+  ];
+  h+='<div class="sec">Percentual de Renovação por Turma</div>';
+  h+='<div class="card"><h3>Alunas que compraram uma turma e depois compraram SOS MULHER - RENOVAÇÃO</h3><div class="d">Total: 447 renovações identificadas</div>';
+  const maxRenPct=Math.max(...renovTurmaData.map(d=>d[3]));
+  h+='<div style="display:flex;align-items:flex-end;gap:8px;padding:20px 0;min-height:260px;overflow-x:auto">';
+  const colColors=['var(--accent)','var(--a2)','var(--teal)','var(--sky)','var(--cyan)','var(--green)','var(--gold)','var(--orange)','var(--pink)','var(--red)','var(--accent)','var(--teal)'];
+  renovTurmaData.forEach(([turma,renov,total,pct],i)=>{
+    const barH=Math.max(Math.round(pct/maxRenPct*200),12);
+    const col=colColors[i%colColors.length];
+    h+='<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:55px" title="'+turma+': '+renov+'/'+total+' ('+pct.toFixed(1)+'%)">';
+    h+='<span style="font-size:11px;font-weight:700;color:'+col+';margin-bottom:4px">'+pct.toFixed(1)+'%</span>';
+    h+='<div style="width:100%;max-width:48px;height:'+barH+'px;background:'+col+';border-radius:6px 6px 0 0;transition:height .5s"></div>';
+    h+='<span style="font-size:10px;color:var(--t3);margin-top:6px;text-align:center;line-height:1.2">'+turma.replace('SOS ','T')+'</span>';
+    h+='<span style="font-size:9px;color:var(--t3)">'+renov+'/'+total+'</span>';
+    h+='</div>';
+  });
+  h+='</div></div>';
+
   // Vencidas por turma
   const vencTurma={};
   buckets.vencido.forEach(r=>{const t=r.turma||'Sem turma';vencTurma[t]=(vencTurma[t]||0)+1;});
@@ -973,7 +999,7 @@ function initDashboard(){
       if(r.turma)tSet.add(r.turma);
       if(r.funil)fSet.add(r.funil);
     });
-    const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','Renovacao'];
+    const turmaOrder=['SOS 14','SOS 15','SOS 16','SOS 17','SOS 18','SOS 19','SOS 20','SOS 21','SOS 22','SOS 23','SOS 24','SOS Mulher','Renovacao'];
     const sortedT=turmaOrder.filter(t=>tSet.has(t));
     tSet.forEach(t=>{if(!sortedT.includes(t))sortedT.push(t);});
     buildMS('fTurma',sortedT);
