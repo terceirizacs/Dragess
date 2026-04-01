@@ -130,11 +130,9 @@ function lerDados() {
     rows.push([nome,email,tl,fu,dc,ul,nn(r[15]),ds,m1,m3,m4,m5,rd(ts),me,cr,fa,fd2,fc,rd(tp),dv,rv,to,r[9]!=null?String(r[9]):"",motivo]);
   }
 
-  var comunidade = lerComunidade(ss);
-  var result = '{"rows":' + JSON.stringify(rows);
-  if (comunidade) result += ',"comunidade":' + JSON.stringify(comunidade);
-  result += '}';
-  return result;
+  var comunidade = {};
+  try { comunidade = lerComunidade(ss) || {}; } catch(e) { comunidade = {erro: e.toString()}; }
+  return JSON.stringify({rows: rows, comunidade: comunidade});
 }
 
 // ===== FALLBACK SEM SHEETS API =====
@@ -182,11 +180,9 @@ function lerDadosFallback(ss, nomeAba) {
     rows.push([nome,email,tl,fu,dc,ul,nn(r[15]),ds,m1,m3,m4,m5,rd(ts),me,cr,fa,fd2,fc,rd(tp),dv,rv,to,r[9]?String(r[9]):"",motivo]);
   }
 
-  var comunidade = lerComunidade(ss);
-  var result = '{"rows":' + JSON.stringify(rows);
-  if (comunidade) result += ',"comunidade":' + JSON.stringify(comunidade);
-  result += '}';
-  return result;
+  var comunidade = {};
+  try { comunidade = lerComunidade(ss) || {}; } catch(e) { comunidade = {erro: e.toString()}; }
+  return JSON.stringify({rows: rows, comunidade: comunidade});
 }
 
 // ===== LOOKUP TURMA =====
@@ -287,12 +283,30 @@ function getTurma(a) {
 
 // ===== COMUNIDADE =====
 function lerComunidade(ss) {
+  try {
   var ws = ss.getSheetByName("Comentarios e post na comunidad");
-  if (!ws) return null;
+  if (!ws) {
+    // Tentar nomes alternativos
+    ws = ss.getSheetByName("Comentarios e post na comunidade");
+    if (!ws) ws = ss.getSheetByName("Comentários e post na comunidad");
+    if (!ws) ws = ss.getSheetByName("Comentários e post na comunidade");
+    if (!ws) {
+      // Buscar aba que contenha "omentario"
+      var sheets = ss.getSheets();
+      for (var s = 0; s < sheets.length; s++) {
+        if (sheets[s].getName().toLowerCase().indexOf("omentario") >= 0) {
+          ws = sheets[s];
+          break;
+        }
+      }
+    }
+    if (!ws) return null;
+  }
   var lr = ws.getLastRow();
   if (lr < 2) return null;
 
-  var data = ws.getRange(2, 1, lr - 1, 14).getValues(); // A:N
+  // Ler só colunas necessárias: E(5)=IsProducer, F(6)=Likes, H(8)=Views, L(12)=Description
+  var data = ws.getRange(2, 1, lr - 1, 14).getValues();
 
   var totalPosts = 0, totalPerguntas = 0, postsAlunas = 0, postsProdutor = 0;
   var sumLikes = 0, sumViews = 0;
@@ -323,29 +337,29 @@ function lerComunidade(ss) {
   };
 
   var temaKw = {
-    "Alimentacao / dieta": ['almoco','almoco','jantar','cafe da manha','refeicao','refeicao','cardapio','dieta','calorias','carboidrato','proteina','proteina'],
-    "Duvidas sobre o programa": ['modulo','modulo','aula','plataforma','acesso','protocolo','fase','adaptacao'],
-    "Treino / exercicio": ['treino','exercicio','exercicio','musculacao','academia','cardio'],
-    "Intestino / digestao": ['intestino','digestao','digestao','constipacao','gases','inchaco','probiotico'],
-    "Suplementacao / vitaminas": ['suplemento','vitamina','b12','ferro','magnesio','omega','zinco','creatina','colageno','whey'],
-    "Emagrecimento / peso": ['emagrecer','peso','balanca','gordura','metabolismo','deficit'],
-    "Sono / energia": ['sono','insonia','cansaco','energia','fadiga'],
+    "Alimentacao / dieta": ['almoço','almoco','jantar','café da manhã','cafe da manha','refeição','refeicao','cardápio','cardapio','dieta','calorias','carboidrato','proteína','proteina'],
+    "Duvidas sobre o programa": ['módulo','modulo','aula','plataforma','acesso','protocolo','fase','adaptação','adaptacao'],
+    "Treino / exercicio": ['treino','exercício','exercicio','musculação','musculacao','academia','cardio'],
+    "Intestino / digestao": ['intestino','digestão','digestao','constipação','constipacao','gases','inchaço','inchaco','probiótico','probiotico'],
+    "Suplementacao / vitaminas": ['suplemento','vitamina','b12','ferro','magnésio','magnesio','omega','zinco','creatina','colágeno','colageno','whey'],
+    "Emagrecimento / peso": ['emagrecer','peso','balança','balanca','gordura','metabolismo','déficit','deficit'],
+    "Sono / energia": ['sono','insônia','insonia','cansaço','cansaco','energia','fadiga'],
     "Exames / resultados": ['exame','resultado','hemograma','glicose','colesterol','insulina'],
-    "Receitas / preparacoes": ['receita','preparo','preparacao','como fazer','substituir'],
-    "Hormonios / ciclo": ['hormonio','ciclo','menstrual','menopausa','tireoide','anticoncepcional'],
+    "Receitas / preparacoes": ['receita','preparo','preparação','preparacao','como fazer','substituir'],
+    "Hormonios / ciclo": ['hormônio','hormonio','ciclo','menstrual','menopausa','tireoide','anticoncepcional'],
     "Pele / cabelo / estetica": ['pele','cabelo','acne','queda de cabelo','celulite']
   };
 
   var duvidaKw = {
-    "Duvidas sobre fases do protocolo": ['fase','adaptacao','protocolo'],
-    "Quantidade / porcao": ['quantidade','quanto','quantos','porcao'],
+    "Duvidas sobre fases do protocolo": ['fase','adaptação','adaptacao','protocolo'],
+    "Quantidade / porcao": ['quantidade','quanto','quantos','porção','porcao'],
     "Interpretacao de exames": ['exame','resultado'],
     "Qual suplemento tomar?": ['suplemento','vitamina','creatina'],
-    "Problemas intestinais": ['intestino','inchaco','gases'],
-    "Duvidas sobre treino": ['treino','exercicio','exercicio'],
-    "Substituicao de alimentos": ['substituir','substituicao','trocar'],
-    "Sono e recuperacao": ['sono','insonia','dormir'],
-    "Hormonios e ciclo": ['hormonio','hormonio','ciclo','tireoide']
+    "Problemas intestinais": ['intestino','inchaço','inchaco','gases'],
+    "Duvidas sobre treino": ['treino','exercício','exercicio'],
+    "Substituicao de alimentos": ['substituir','substituição','substituicao','trocar'],
+    "Sono e recuperacao": ['sono','insônia','insonia','dormir'],
+    "Hormonios e ciclo": ['hormônio','hormonio','ciclo','tireoide']
   };
 
   for (var i = 0; i < data.length; i++) {
@@ -364,8 +378,8 @@ function lerComunidade(ss) {
     var title = String(r[10] || "").toLowerCase(); // K: PostTitle
     var texto = desc + " " + title;
 
-    // Remove acentos para matching
-    var textoNorm = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // Matching direto sem normalização (keywords já sem acento)
+    var textoNorm = texto;
 
     // Categorizar temas
     for (var tema in temaKw) {
@@ -409,6 +423,9 @@ function lerComunidade(ss) {
     temas: temas,
     duvidasFrequentes: duvidas
   };
+  } catch(e) {
+    return { erro: e.toString(), totalPosts: 0, totalPerguntas: 0, postsAlunas: 0, postsProdutor: 0, mediaLikes: 0, mediaViews: 0, temas: {}, duvidasFrequentes: {} };
+  }
 }
 
 function limparCache() {
