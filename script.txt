@@ -25,6 +25,14 @@ function onOpen() {
 // ===== API =====
 function doGet(e) {
   try {
+    // Chamada separada para comunidade
+    if (e && e.parameter && e.parameter.tipo === "comunidade") {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var com = {};
+      try { com = lerComunidade(ss) || {}; } catch(ce) { com = {erro: ce.toString()}; }
+      return ContentService.createTextOutput(JSON.stringify(com)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var cache = CacheService.getScriptCache();
     var forceRefresh = e && e.parameter && e.parameter.refresh === "1";
 
@@ -130,9 +138,7 @@ function lerDados() {
     rows.push([nome,email,tl,fu,dc,ul,nn(r[15]),ds,m1,m3,m4,m5,rd(ts),me,cr,fa,fd2,fc,rd(tp),dv,rv,to,r[9]!=null?String(r[9]):"",motivo]);
   }
 
-  var comunidade = {};
-  try { comunidade = lerComunidade(ss) || {}; } catch(e) { comunidade = {erro: e.toString()}; }
-  return JSON.stringify({rows: rows, comunidade: comunidade});
+  return '{"rows":' + JSON.stringify(rows) + '}';
 }
 
 // ===== FALLBACK SEM SHEETS API =====
@@ -180,9 +186,7 @@ function lerDadosFallback(ss, nomeAba) {
     rows.push([nome,email,tl,fu,dc,ul,nn(r[15]),ds,m1,m3,m4,m5,rd(ts),me,cr,fa,fd2,fc,rd(tp),dv,rv,to,r[9]?String(r[9]):"",motivo]);
   }
 
-  var comunidade = {};
-  try { comunidade = lerComunidade(ss) || {}; } catch(e) { comunidade = {erro: e.toString()}; }
-  return JSON.stringify({rows: rows, comunidade: comunidade});
+  return '{"rows":' + JSON.stringify(rows) + '}';
 }
 
 // ===== LOOKUP TURMA =====

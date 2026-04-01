@@ -1152,6 +1152,12 @@ async function loadFromAPI(){
     COM=data.comunidade||{};
     document.getElementById('loadingOverlay').style.display='none';
     initDashboard();
+    // Carregar comunidade em paralelo (chamada separada para não pesar)
+    if(!COM.totalPosts){
+      fetch(API_URL+'?tipo=comunidade',{redirect:'follow'}).then(function(r){return r.json();}).then(function(c){
+        if(c&&c.totalPosts){COM=c;renderComunidade();}
+      }).catch(function(){});
+    }
   } catch(err){
     document.getElementById('loadingOverlay').style.display='none';
     loading.innerHTML='<div style="color:var(--red);padding:40px;text-align:center;font-size:16px">Erro ao carregar dados:<br><br><code>'+err.message+'</code><br><br>Verifique se o Apps Script esta implantado como app da web<br>com acesso "Qualquer pessoa".</div>';
