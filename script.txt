@@ -362,14 +362,25 @@ function lerComunidade(ss) {
     "Hormonios e ciclo": ['hormônio','hormonio','ciclo','tireoide']
   };
 
+  var userPosts = {};
+
   for (var i = 0; i < data.length; i++) {
     var r = data[i];
     if (!r[0]) continue; // skip empty rows
     totalPosts++;
 
     var isProducer = String(r[4]).trim().toUpperCase() === "YES";
-    if (isProducer) postsProdutor++;
-    else postsAlunas++;
+    var userName = String(r[2] || "").trim();
+    var userEmail = String(r[3] || "").trim().toLowerCase();
+    if (isProducer) { postsProdutor++; }
+    else {
+      postsAlunas++;
+      // Ranking por email (mais confiável que nome)
+      if (userEmail) {
+        if (!userPosts[userEmail]) userPosts[userEmail] = { nome: userName, email: userEmail, posts: 0 };
+        userPosts[userEmail].posts++;
+      }
+    }
 
     sumLikes += nn(r[5]);  // F: LikesCount
     sumViews += nn(r[7]);  // H: ViewsCount
@@ -413,6 +424,14 @@ function lerComunidade(ss) {
     }
   }
 
+  // Construir ranking top 30 (enviar mais para filtrar por turma no front)
+  var rankArr = [];
+  for (var email in userPosts) {
+    rankArr.push(userPosts[email]);
+  }
+  rankArr.sort(function(a, b) { return b.posts - a.posts; });
+  var ranking = rankArr.slice(0, 30);
+
   return {
     totalPosts: totalPosts,
     totalPerguntas: totalPerguntas,
@@ -421,7 +440,8 @@ function lerComunidade(ss) {
     mediaLikes: totalPosts > 0 ? Math.round(sumLikes / totalPosts * 10) / 10 : 0,
     mediaViews: totalPosts > 0 ? Math.round(sumViews / totalPosts * 10) / 10 : 0,
     temas: temas,
-    duvidasFrequentes: duvidas
+    duvidasFrequentes: duvidas,
+    ranking: ranking
   };
   } catch(e) {
     return { erro: e.toString(), totalPosts: 0, totalPerguntas: 0, postsAlunas: 0, postsProdutor: 0, mediaLikes: 0, mediaViews: 0, temas: {}, duvidasFrequentes: {} };

@@ -1041,6 +1041,50 @@ function renderComunidade(){
   });
   h+='</div>';
 
+  // Ranking de Alunas com mais posts
+  if(COM.ranking&&COM.ranking.length>0){
+    // Cruzar email com ALLDATA para descobrir turma
+    var emailTurma={};
+    if(ALLDATA&&ALLDATA.length){ALLDATA.forEach(function(r){if(r.email&&r.turma)emailTurma[r.email.toLowerCase()]=r.turma;});}
+
+    // Filtrar por turma se selecionada
+    var ft=getMS('fTurma');
+    var rankFiltrado=COM.ranking;
+    var tituloRank='Top 10 Alunas Mais Ativas';
+
+    if(ft.length>0){
+      // Filtrar ranking por turma
+      rankFiltrado=COM.ranking.filter(function(u){
+        var turma=emailTurma[u.email]||'';
+        return ft.includes(turma);
+      });
+      tituloRank='Top 10 Alunas — '+ft.join(', ');
+    }
+
+    var top10=rankFiltrado.slice(0,10);
+    if(top10.length>0){
+      h+='<div class="sec">🏆 '+tituloRank+'</div>';
+      h+='<div class="card"><div class="d">Ranking por quantidade de posts na comunidade (excluindo administradores)</div>';
+      var mxP=top10[0].posts;
+      top10.forEach(function(u,idx){
+        var turma=emailTurma[u.email]||'';
+        var w=Math.max(Math.round(u.posts/mxP*100),5);
+        var medal=idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'';
+        var cor=idx<3?'var(--accent)':'var(--teal)';
+        h+='<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">';
+        h+='<div style="min-width:30px;font-family:JetBrains Mono;font-weight:700;font-size:14px;color:var(--t3);text-align:center">'+(medal||(idx+1)+'º')+'</div>';
+        h+='<div style="flex:1;min-width:0">';
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-weight:600;color:var(--t1);font-size:13px">'+u.nome+'</span>';
+        if(turma)h+='<span style="font-size:10px;color:var(--t3);background:var(--track-bg);padding:2px 8px;border-radius:6px">'+turma+'</span>';
+        h+='</div>';
+        h+='<div style="display:flex;align-items:center;gap:10px"><div style="flex:1;height:8px;background:var(--track-bg);border-radius:4px;overflow:hidden"><div style="width:'+w+'%;height:100%;background:'+cor+';border-radius:4px"></div></div>';
+        h+='<span style="font-family:JetBrains Mono;font-weight:700;font-size:13px;color:'+cor+';min-width:50px;text-align:right">'+u.posts+'</span></div>';
+        h+='</div></div>';
+      });
+      h+='</div>';
+    }
+  }
+
   // Insights
   h+='<div class="sec">Insights</div>';
   h+='<div class="ins-g">';
