@@ -238,6 +238,7 @@ nav{display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
 <button class="tab-btn" onclick="switchTab('protocolo',this)">Protocolo de Desinflamacao</button>
 <button class="tab-btn" onclick="switchTab('detalhamento',this)">Detalhamento</button>
 <button class="tab-btn" onclick="switchTab('renovacoes',this)">Renovacoes</button>
+<button class="tab-btn" onclick="switchTab('comunidade',this)">💬 Comunidade</button>
 </nav>
 
 <div class="filter-bar">
@@ -261,6 +262,7 @@ nav{display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
 <div class="filter-group"><label class="filter-label">Status</label><div class="ms-wrap" id="fVencStatus"></div></div>
 </div>
 </div><div id="cRenov"></div></div>
+<div class="tab-content" id="tab-comunidade"><div id="cComunidade"></div></div>
 <div class="footer"><strong>Terceiriza CS</strong> - Dashboard Dra Gess</div>
 </div>
 
@@ -278,7 +280,7 @@ function startLoadData(){loadFromAPI();}
 const API_URL = 'https://script.google.com/macros/s/AKfycbxny-MR7AhL9uO9pftqaXYHXMB6fOR9bocdpRc6rKdvGmRtNlYaWE3nknjUGNKwBrHhwQ/exec';
 
 // ===== DATA LOADING =====
-let ALLDATA=[], NOW=Date.now();
+let ALLDATA=[], NOW=Date.now(), COM={};
 const TODAY=new Date();
 const fN=n=>n.toLocaleString('pt-BR');
 const fP=n=>n.toFixed(1).replace('.',',')+' %';
@@ -451,6 +453,7 @@ function renderAll(cs){
   renderProtocolo(cs);
   renderDetalhamento(cs);
   renderRenovacoes(cs);
+  renderComunidade();
 }
 
 function renderSOS(cs){
@@ -988,6 +991,69 @@ function renderUrgPage(){
   const pg=document.getElementById('urgPag');if(pg)pg.innerHTML=p;
 }
 
+// ===== COMUNIDADE =====
+function renderComunidade(){
+  const el=document.getElementById('cComunidade');
+  if(!el) return;
+  if(!COM||!COM.totalPosts){el.innerHTML='<div style="padding:40px;text-align:center;color:var(--t3)">Dados da comunidade nao disponiveis.</div>';return;}
+
+  let h='';
+  // KPIs
+  h+='<div class="kpis">';
+  h+=kpi('var(--accent)','Total de Posts',fN(COM.totalPosts),'','var(--accent)');
+  h+=kpi('var(--teal)','Posts de Alunas',fN(COM.postsAlunas),'excluindo produtora','var(--teal)');
+  h+=kpi('var(--sky)','Total de Perguntas',fN(COM.totalPerguntas),'posts com ?','var(--sky)');
+  h+=kpi('var(--pink)','Media de Likes',COM.mediaLikes.toFixed(1).replace('.',','),'por post','var(--pink)');
+  h+=kpi('var(--gold)','Media de Views',COM.mediaViews.toFixed(1).replace('.',','),'por post','var(--gold)');
+  h+='</div>';
+
+  // Temas
+  h+='<div class="sec">Principais Temas</div>';
+  const temas=COM.temas||{};
+  const temasArr=Object.entries(temas).sort((a,b)=>b[1]-a[1]);
+  const totalTemas=temasArr.reduce((s,t)=>s+t[1],0);
+  const temaColors=['var(--accent)','var(--teal)','var(--sky)','var(--pink)','var(--gold)','var(--orange)','var(--green)','var(--cyan)','var(--a2)','var(--red)','var(--t3)'];
+  h+='<div class="card" style="padding:20px">';
+  const tmx=temasArr.length?temasArr[0][1]:1;
+  temasArr.forEach(([lbl,cnt],idx)=>{
+    const w=Math.max(Math.round(cnt/tmx*100),3);
+    const pct=totalTemas?rd(cnt/totalTemas*100):0;
+    const pctStr=fP(pct);
+    const cor=temaColors[idx%temaColors.length];
+    const safe=String(lbl).replace(/'/g,'').replace(/"/g,'');
+    h+='<div class="hbar-row" data-hlbl="'+safe+'" data-hcnt="'+fN(cnt)+'" data-hpct="'+pctStr+'" onmouseenter="hbarTip(event,this)" onmousemove="hbarTip(event,this)" onmouseleave="hideTip()" style="margin-bottom:8px"><span class="hbar-lbl">'+lbl+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+w+'%;background:'+cor+'">'+fN(cnt)+'</div></div><span class="hbar-pct">'+pctStr+'</span></div>';
+  });
+  h+='</div>';
+
+  // Duvidas frequentes
+  h+='<div class="sec">Duvidas Mais Frequentes</div>';
+  const duvidas=COM.duvidasFrequentes||{};
+  const duvArr=Object.entries(duvidas).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  h+='<div class="card" style="padding:20px">';
+  const dmx=duvArr.length?duvArr[0][1]:1;
+  duvArr.forEach(([lbl,cnt],idx)=>{
+    const w=Math.max(Math.round(cnt/dmx*100),3);
+    const pct=COM.totalPerguntas?rd(cnt/COM.totalPerguntas*100):0;
+    const pctStr=fP(pct);
+    const cor=temaColors[idx%temaColors.length];
+    const safe=String(lbl).replace(/'/g,'').replace(/"/g,'');
+    h+='<div class="hbar-row" data-hlbl="'+safe+'" data-hcnt="'+fN(cnt)+'" data-hpct="'+pctStr+'" onmouseenter="hbarTip(event,this)" onmousemove="hbarTip(event,this)" onmouseleave="hideTip()" style="margin-bottom:8px"><span class="hbar-lbl">'+lbl+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+w+'%;background:'+cor+'">'+fN(cnt)+'</div></div><span class="hbar-pct">'+pctStr+'</span></div>';
+  });
+  h+='</div>';
+
+  // Insights
+  h+='<div class="sec">Insights</div>';
+  h+='<div class="ins-g">';
+  h+='<div class="ins i"><div class="ins-t">Fases do protocolo</div><div class="ins-p">A maior duvida e sobre as fases do protocolo — as alunas nao sabem em que fase estao. Material de apoio visual por fase pode reduzir esse volume.</div></div>';
+  h+='<div class="ins w"><div class="ins-t">Alimentacao domina</div><div class="ins-p">Alimentacao domina os posts — FAQ de alimentos permitidos/proibidos por fase reduziria perguntas.</div></div>';
+  h+='<div class="ins i"><div class="ins-t">Suplementacao recorrente</div><div class="ins-p">Suplementacao e recorrente — guia de suplementos padrao economizaria tempo do CS.</div></div>';
+  h+='<div class="ins w"><div class="ins-t">Intestino na adaptacao</div><div class="ins-p">Intestino e a 4a duvida — problema real na fase de adaptacao, FAQ especifico ajudaria.</div></div>';
+  h+='<div class="ins i"><div class="ins-t">Exames geram inseguranca</div><div class="ins-p">Exames geram inseguranca — template "o que olhar no exame" reduziria duvidas.</div></div>';
+  h+='</div>';
+
+  el.innerHTML=h;
+}
+
 // ===== INIT =====
 function initDashboard(){
   // Load data from embedded script or external file
@@ -1039,6 +1105,7 @@ async function loadFromAPI(){
     // Suporta formato v5 {rows:[...]} e v4 [...]
     RAW_DATA=data.rows||data;
     if(!Array.isArray(RAW_DATA)) throw new Error('Dados nao sao array');
+    COM=data.comunidade||{};
     document.getElementById('loadingOverlay').style.display='none';
     initDashboard();
   } catch(err){

@@ -1,0 +1,431 @@
+// ============================================================
+// APPS SCRIPT - DASHBOARD DRA GESS (v6 - SHEETS API RAPIDO)
+// Usa Sheets API (Advanced Service) que e 5-10x mais rapido
+// ============================================================
+// IMPORTANTE: Ativar servico "Google Sheets API" no Apps Script
+// Menu: Servicos (+) > Google Sheets API > Adicionar
+
+var BUSCA_ABA = "Assinantes ativos e inativos";
+
+function encontrarNomeAba(ss) {
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName().indexOf(BUSCA_ABA) >= 0) return sheets[i].getName();
+  }
+  return null;
+}
+
+// ===== MENU =====
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Dashboard Gess')
+    .addItem('Limpar Cache', 'limparCache')
+    .addToUi();
+}
+
+// ===== API =====
+function doGet(e) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var forceRefresh = e && e.parameter && e.parameter.refresh === "1";
+
+    if (!forceRefresh) {
+      var chunks = [];
+      for (var c = 0; c < 30; c++) {
+        var part = cache.get('d_' + c);
+        if (part === null) break;
+        chunks.push(part);
+      }
+      if (chunks.length > 0) {
+        return ContentService.createTextOutput(chunks.join('')).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    var json = lerDados();
+
+    // Cache por 5 min
+    var cs = 99000;
+    var obj = {};
+    for (var i = 0; i < json.length; i += cs) {
+      obj['d_' + Math.floor(i / cs)] = json.substring(i, i + cs);
+    }
+    cache.putAll(obj, 300);
+
+    return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({error: err.message})).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ===== INDICES DO ARRAY DE SAIDA =====
+// [0]=nome, [1]=email, [2]=turma, [3]=funil, [4]=dtCadastro, [5]=ultLogin,
+// [6]=acessos, [7]=diasSemAcesso, [8]=m1, [9]=m3, [10]=m4, [11]=m5,
+// [12]=totalSOS, [13]=mediaEss, [14]=cronograma, [15]=faseAtaque,
+// [16]=faseAdaptacao, [17]=faseChoque, [18]=totalProtocolo,
+// [19]=dtVencimento, [20]=isRenovacao, [21]=turmaOriginal, [22]=status,
+// [23]=motivoNaoRenov
+
+function lerDados() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ssId = ss.getId();
+  var nomeAba = encontrarNomeAba(ss);
+  if (!nomeAba) throw new Error('Aba nao encontrada');
+
+  // SHEETS API: muito mais rapido que SpreadsheetApp
+  var range = "'" + nomeAba + "'!A2:AV";
+  var resp;
+  try {
+    resp = Sheets.Spreadsheets.Values.get(ssId, range, {valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'SERIAL_NUMBER'});
+  } catch(apiErr) {
+    // Fallback para SpreadsheetApp se Sheets API nao estiver ativada
+    return lerDadosFallback(ss, nomeAba);
+  }
+
+  var data = resp.values;
+  if (!data || data.length === 0) return '{"rows":[]}';
+
+  // Lookup turma (cache 6h)
+  var cache = CacheService.getScriptCache();
+  var lookup;
+  var cl = cache.get('tl');
+  if (cl) { lookup = JSON.parse(cl); }
+  else {
+    lookup = buildLookup(ss);
+    var ls = JSON.stringify(lookup);
+    if (ls.length < 99000) cache.put('tl', ls, 21600);
+  }
+
+  var rows = [];
+  // Epoch base do Google Sheets (30/12/1899)
+  var epoch = new Date(1899, 11, 30);
+
+  for (var i = 0; i < data.length; i++) {
+    var r = data[i];
+    if (!r || r.length < 3) continue;
+    var nome = r[2]; // C
+    if (!nome || nome === "") continue;
+
+    var assin = r[7] != null ? String(r[7]) : ""; // H
+    var turma = getTurma(assin);
+    if (turma === "ST") continue;
+
+    var email = r[4] != null ? String(r[4]).toLowerCase().trim() : ""; // E
+    var to = (turma === "RN" && email && lookup[email]) ? lookup[email] : "";
+
+    var ul = serialToDate(r[10], epoch); // K
+    var dc = serialToDate(r[0], epoch);  // A
+
+    var m1 = nn(r[21]), m3 = nn(r[23]), m4 = nn(r[24]), m5 = nn(r[25]);
+    var me = rd((m1 + m3 + m4 + m5) / 4);
+    var ts = nn(r[33]); // AH
+    var ds = nn(r[18]); // S
+    var cr = nn(r[36]), fa = nn(r[37]), fd2 = nn(r[38]), fc = nn(r[39]);
+    var tp = nn(r[43]); // AR
+    var fu = r[46] != null ? String(r[46]).trim() : ""; // AU
+
+    var dv = getDV(assin);
+    var rv = assin.toUpperCase().indexOf("RENOVA") >= 0 ? 1 : 0;
+    var tl = turma === "RN" ? "Renovacao" : turma;
+
+    var motivo = r[47] != null ? String(r[47]).trim() : ""; // AV
+    rows.push([nome,email,tl,fu,dc,ul,nn(r[15]),ds,m1,m3,m4,m5,rd(ts),me,cr,fa,fd2,fc,rd(tp),dv,rv,to,r[9]!=null?String(r[9]):"",motivo]);
+  }
+
+  var comunidade = lerComunidade(ss);
+  var result = '{"rows":' + JSON.stringify(rows);
+  if (comunidade) result += ',"comunidade":' + JSON.stringify(comunidade);
+  result += '}';
+  return result;
+}
+
+// ===== FALLBACK SEM SHEETS API =====
+function lerDadosFallback(ss, nomeAba) {
+  var ws = ss.getSheetByName(nomeAba);
+  var lastRow = ws.getLastRow();
+  if (lastRow < 2) return '{"rows":[]}';
+
+  var cache = CacheService.getScriptCache();
+  var lookup;
+  var cl = cache.get('tl');
+  if (cl) { lookup = JSON.parse(cl); }
+  else {
+    lookup = buildLookup(ss);
+    var ls = JSON.stringify(lookup);
+    if (ls.length < 99000) cache.put('tl', ls, 21600);
+  }
+
+  var data = ws.getRange(2, 1, lastRow - 1, 48).getValues();
+  var rows = [];
+
+  for (var i = 0; i < data.length; i++) {
+    var r = data[i];
+    var nome = r[2];
+    if (!nome || nome === "") continue;
+    var assin = r[7] ? String(r[7]) : "";
+    var turma = getTurma(assin);
+    if (turma === "ST") continue;
+
+    var email = r[4] ? String(r[4]).toLowerCase().trim() : "";
+    var to = (turma === "RN" && email && lookup[email]) ? lookup[email] : "";
+    var ul = fd(r[10]);
+    var dc = fd(r[0]);
+    var m1=nn(r[21]),m3=nn(r[23]),m4=nn(r[24]),m5=nn(r[25]);
+    var me=rd((m1+m3+m4+m5)/4);
+    var ts=nn(r[33]),ds=nn(r[18]);
+    var cr=nn(r[36]),fa=nn(r[37]),fd2=nn(r[38]),fc=nn(r[39]);
+    var tp=nn(r[43]);
+    var fu=r[46]?String(r[46]).trim():"";
+    var dv=getDV(assin);
+    var rv=assin.toUpperCase().indexOf("RENOVA")>=0?1:0;
+    var tl=turma==="RN"?"Renovacao":turma;
+
+    var motivo = r[47] ? String(r[47]).trim() : "";
+    rows.push([nome,email,tl,fu,dc,ul,nn(r[15]),ds,m1,m3,m4,m5,rd(ts),me,cr,fa,fd2,fc,rd(tp),dv,rv,to,r[9]?String(r[9]):"",motivo]);
+  }
+
+  var comunidade = lerComunidade(ss);
+  var result = '{"rows":' + JSON.stringify(rows);
+  if (comunidade) result += ',"comunidade":' + JSON.stringify(comunidade);
+  result += '}';
+  return result;
+}
+
+// ===== LOOKUP TURMA =====
+var TS = [
+  ["SOS T14 e T15",4,["SOS 14","SOS 15"]],
+  ["SOS T16",4,"SOS 16"],["SOS T17",9,"SOS 17"],
+  ["SOS T20",4,"SOS 20"],["SOS T21",2,"SOS 21"],
+  [" SOS T22",2,"SOS 22"],["SOS T23",5,"SOS 23"],["SOS T24",5,"SOS 24"]
+];
+
+function buildLookup(ss) {
+  var lk = {};
+  for (var t = 0; t < TS.length; t++) {
+    var cfg = TS[t];
+    var ws = ss.getSheetByName(cfg[0]);
+    if (!ws) continue;
+    var lr = ws.getLastRow();
+    if (lr < 2) continue;
+    var ed = ws.getRange(2, cfg[1] + 1, lr - 1, 1).getValues();
+    if (Array.isArray(cfg[2])) {
+      try {
+        var ad = ws.getRange(2, 8, lr - 1, 1).getValues();
+        for (var i = 0; i < ed.length; i++) {
+          var em = ed[i][0] ? String(ed[i][0]).toLowerCase().trim() : "";
+          if (!em) continue;
+          lk[em] = (ad[i][0] && String(ad[i][0]).toUpperCase().indexOf("15") >= 0) ? "SOS 15" : "SOS 14";
+        }
+      } catch(e) {
+        for (var i = 0; i < ed.length; i++) {
+          var em = ed[i][0] ? String(ed[i][0]).toLowerCase().trim() : "";
+          if (em && !lk[em]) lk[em] = cfg[2][0];
+        }
+      }
+    } else {
+      for (var i = 0; i < ed.length; i++) {
+        var em = ed[i][0] ? String(ed[i][0]).toLowerCase().trim() : "";
+        if (em && !lk[em]) lk[em] = cfg[2];
+      }
+    }
+  }
+  return lk;
+}
+
+// ===== AUXILIARES =====
+function nn(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  if (typeof v === "number") return v;
+  var s = String(v).replace(/%/g,"").replace(/,/g,".").trim();
+  var x = parseFloat(s); return isNaN(x) ? 0 : x;
+}
+function rd(v) { return Math.round(v * 10) / 10; }
+
+// Converter serial number do Sheets para data yyyy-MM-dd
+function serialToDate(v, epoch) {
+  if (!v) return "";
+  if (typeof v === "number") {
+    var d = new Date(epoch.getTime() + v * 86400000);
+    var mm = d.getMonth() + 1;
+    var dd = d.getDate();
+    return d.getFullYear() + "-" + (mm < 10 ? "0" : "") + mm + "-" + (dd < 10 ? "0" : "") + dd;
+  }
+  var s = String(v).trim();
+  if (!s || s.charAt(0) === "=") return "";
+  // Tentar parsear como data
+  var p = Date.parse(s);
+  if (isNaN(p)) return "";
+  var d = new Date(p);
+  var mm = d.getMonth() + 1;
+  var dd = d.getDate();
+  return d.getFullYear() + "-" + (mm < 10 ? "0" : "") + mm + "-" + (dd < 10 ? "0" : "") + dd;
+}
+
+// Fallback para SpreadsheetApp (formato Date)
+function fd(v) {
+  if (!v) return "";
+  if (v instanceof Date) return isNaN(v.getTime()) ? "" : Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  var s = String(v).trim();
+  if (!s || s.charAt(0) === "=") return "";
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? "" : Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
+function getDV(a) {
+  if (!a) return "";
+  var m = a.match(/até\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+  return m ? m[3] + "-" + m[2] + "-" + m[1] : "";
+}
+function getTurma(a) {
+  if (!a) return "ST";
+  var u = a.toUpperCase();
+  var m = u.match(/TURMA\s*(\d+)/);
+  if (m) return "SOS " + m[1];
+  if (u.indexOf("RENOVA") >= 0) return "RN";
+  if (u.indexOf("AULAO") >= 0 || u.indexOf("AULÃO") >= 0) return "Aulao";
+  if (u.indexOf("SOS MULHER") >= 0) return "SOS Mulher";
+  return "ST";
+}
+
+// ===== COMUNIDADE =====
+function lerComunidade(ss) {
+  var ws = ss.getSheetByName("Comentarios e post na comunidad");
+  if (!ws) return null;
+  var lr = ws.getLastRow();
+  if (lr < 2) return null;
+
+  var data = ws.getRange(2, 1, lr - 1, 14).getValues(); // A:N
+
+  var totalPosts = 0, totalPerguntas = 0, postsAlunas = 0, postsProdutor = 0;
+  var sumLikes = 0, sumViews = 0;
+  var temas = {
+    "Alimentacao / dieta": 0,
+    "Duvidas sobre o programa": 0,
+    "Treino / exercicio": 0,
+    "Intestino / digestao": 0,
+    "Suplementacao / vitaminas": 0,
+    "Emagrecimento / peso": 0,
+    "Sono / energia": 0,
+    "Exames / resultados": 0,
+    "Receitas / preparacoes": 0,
+    "Hormonios / ciclo": 0,
+    "Pele / cabelo / estetica": 0
+  };
+  var duvidas = {
+    "Duvidas sobre fases do protocolo": 0,
+    "Posso comer/tomar/usar X?": 0,
+    "Quantidade / porcao": 0,
+    "Interpretacao de exames": 0,
+    "Qual suplemento tomar?": 0,
+    "Problemas intestinais": 0,
+    "Duvidas sobre treino": 0,
+    "Substituicao de alimentos": 0,
+    "Sono e recuperacao": 0,
+    "Hormonios e ciclo": 0
+  };
+
+  var temaKw = {
+    "Alimentacao / dieta": ['almoco','almoco','jantar','cafe da manha','refeicao','refeicao','cardapio','dieta','calorias','carboidrato','proteina','proteina'],
+    "Duvidas sobre o programa": ['modulo','modulo','aula','plataforma','acesso','protocolo','fase','adaptacao'],
+    "Treino / exercicio": ['treino','exercicio','exercicio','musculacao','academia','cardio'],
+    "Intestino / digestao": ['intestino','digestao','digestao','constipacao','gases','inchaco','probiotico'],
+    "Suplementacao / vitaminas": ['suplemento','vitamina','b12','ferro','magnesio','omega','zinco','creatina','colageno','whey'],
+    "Emagrecimento / peso": ['emagrecer','peso','balanca','gordura','metabolismo','deficit'],
+    "Sono / energia": ['sono','insonia','cansaco','energia','fadiga'],
+    "Exames / resultados": ['exame','resultado','hemograma','glicose','colesterol','insulina'],
+    "Receitas / preparacoes": ['receita','preparo','preparacao','como fazer','substituir'],
+    "Hormonios / ciclo": ['hormonio','ciclo','menstrual','menopausa','tireoide','anticoncepcional'],
+    "Pele / cabelo / estetica": ['pele','cabelo','acne','queda de cabelo','celulite']
+  };
+
+  var duvidaKw = {
+    "Duvidas sobre fases do protocolo": ['fase','adaptacao','protocolo'],
+    "Quantidade / porcao": ['quantidade','quanto','quantos','porcao'],
+    "Interpretacao de exames": ['exame','resultado'],
+    "Qual suplemento tomar?": ['suplemento','vitamina','creatina'],
+    "Problemas intestinais": ['intestino','inchaco','gases'],
+    "Duvidas sobre treino": ['treino','exercicio','exercicio'],
+    "Substituicao de alimentos": ['substituir','substituicao','trocar'],
+    "Sono e recuperacao": ['sono','insonia','dormir'],
+    "Hormonios e ciclo": ['hormonio','hormonio','ciclo','tireoide']
+  };
+
+  for (var i = 0; i < data.length; i++) {
+    var r = data[i];
+    if (!r[0]) continue; // skip empty rows
+    totalPosts++;
+
+    var isProducer = String(r[4]).trim().toUpperCase() === "YES";
+    if (isProducer) postsProdutor++;
+    else postsAlunas++;
+
+    sumLikes += nn(r[5]);  // F: LikesCount
+    sumViews += nn(r[7]);  // H: ViewsCount
+
+    var desc = String(r[11] || "").toLowerCase(); // L: PostDescription
+    var title = String(r[10] || "").toLowerCase(); // K: PostTitle
+    var texto = desc + " " + title;
+
+    // Remove acentos para matching
+    var textoNorm = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // Categorizar temas
+    for (var tema in temaKw) {
+      var kws = temaKw[tema];
+      for (var k = 0; k < kws.length; k++) {
+        if (textoNorm.indexOf(kws[k]) >= 0) {
+          temas[tema]++;
+          break;
+        }
+      }
+    }
+
+    // Verificar se e pergunta
+    var isPergunta = texto.indexOf("?") >= 0;
+    if (isPergunta) {
+      totalPerguntas++;
+      // Categorizar duvida
+      // Caso especial: "Posso comer/tomar/usar X?"
+      if (textoNorm.indexOf('pode') >= 0 && (textoNorm.indexOf('comer') >= 0 || textoNorm.indexOf('tomar') >= 0 || textoNorm.indexOf('usar') >= 0)) {
+        duvidas["Posso comer/tomar/usar X?"]++;
+      }
+      for (var duv in duvidaKw) {
+        var dkws = duvidaKw[duv];
+        for (var d = 0; d < dkws.length; d++) {
+          if (textoNorm.indexOf(dkws[d]) >= 0) {
+            duvidas[duv]++;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    totalPosts: totalPosts,
+    totalPerguntas: totalPerguntas,
+    postsAlunas: postsAlunas,
+    postsProdutor: postsProdutor,
+    mediaLikes: totalPosts > 0 ? Math.round(sumLikes / totalPosts * 10) / 10 : 0,
+    mediaViews: totalPosts > 0 ? Math.round(sumViews / totalPosts * 10) / 10 : 0,
+    temas: temas,
+    duvidasFrequentes: duvidas
+  };
+}
+
+function limparCache() {
+  var cache = CacheService.getScriptCache();
+  var keys = ['tl'];
+  for (var i = 0; i < 30; i++) keys.push('d_' + i);
+  cache.removeAll(keys);
+  SpreadsheetApp.getActiveSpreadsheet().toast('Cache limpo!');
+}
+
+function testarDoGet() {
+  var t0 = new Date();
+  var r = doGet({parameter:{}});
+  var c = r.getContent();
+  var ms = new Date() - t0;
+  Logger.log("Tempo: " + ms + "ms, Chars: " + c.length);
+  var d = JSON.parse(c);
+  Logger.log("Rows: " + (d.rows ? d.rows.length : 'N/A'));
+  Logger.log(c.substring(0, 500));
+}
