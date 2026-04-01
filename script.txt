@@ -434,7 +434,7 @@ function lerComunidade(ss) {
     rankArr.push(userPosts[email]);
   }
   rankArr.sort(function(a, b) { return b.posts - a.posts; });
-  var ranking = rankArr.slice(0, 30);
+  var ranking = rankArr.slice(0, 200);
 
   return {
     totalPosts: totalPosts,
